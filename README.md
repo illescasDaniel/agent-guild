@@ -1,5 +1,7 @@
 # agent-guild
 
+[![PyPI](https://img.shields.io/pypi/v/agent-guild)](https://pypi.org/project/agent-guild/)
+
 A ready-made **multi-agent setup for [Claude Code](https://claude.com/claude-code)**, installed into a project with one
 command. A Sonnet **orchestrator** delegates to specialist subagents (Opus architect and grader, Sonnet coders, Haiku
 utility), and three features come wired in:
