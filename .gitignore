@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Claude Code local state
+.claude/settings.local.json
+CLAUDE.local.md
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
