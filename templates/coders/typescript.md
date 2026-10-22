@@ -9,6 +9,9 @@ are already loaded; call them directly.
 - Prefer `edit_symbol` / `edit` for edits: they type-check before writing. If a write tool returns a preview, apply it
   with `apply_edit`; undo with `undo_edit`. Use `quick_fix` for language-server fixes.
 - Before reporting, run `diagnostics` (or `verify_changes`) on what you touched.
+- `webnav` checks with its own TypeScript 7 unless the project has version 7 or later, which no longer loads
+  `@types/*` unless `compilerOptions.types` lists them. If `diagnostics` reports missing-types errors (e.g. TS2591 for
+  `node:` imports) that the project's own `tsc` doesn't, trust `tsc` and mention it under Friction.
 - Grep and `sed` are for files `webnav` doesn't cover and for text that is not a symbol (strings, docs, config). If
   you used them on a symbol anyway, say why under Deviations.
 - If a webnav tool errors or is unavailable, say so under Friction, then fall back to grep and your own edits.

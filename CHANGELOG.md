@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- `coder-typescript` knows that webnav diagnostics can report missing `@types` errors the project's own `tsc` does not.
+
 ## [1.1.0] - 2026-10-22
 
 - `--with coder-python` / `coder-swift` / `coder-typescript`: optional language coders that must use the language's
