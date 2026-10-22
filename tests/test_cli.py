@@ -547,6 +547,15 @@ def test_given_claude_md_only_and_codex_then_developer_rules_are_not_migrated(tm
     assert (project / "CLAUDE.md").read_text() == "# Mine\n"
 
 
+def test_given_claude_md_reference_when_converting_for_cursor_or_codex_then_only_agents_md_is_named():
+    source = b'---\nname: x\ndescription: d\n---\nFollow `CLAUDE.md` / `AGENTS.md` rules; read `AGENTS.md` / `CLAUDE.md`.\n'
+    for tool in ("cursor", "codex"):
+        converted = convert_agent(tool, source).decode()
+        assert "CLAUDE.md" not in converted
+        assert "Follow `AGENTS.md` rules; read `AGENTS.md`." in converted
+    assert b"`CLAUDE.md` / `AGENTS.md`" in convert_agent("claude", source)
+
+
 def test_given_crlf_agent_source_when_converting_then_same_result_as_lf():
     # Windows checkouts may turn the shipped agent files into CRLF
     lf = b'---\nname: x\ndescription: d\ndisallowedTools: Edit, Write\n---\nBody\n'

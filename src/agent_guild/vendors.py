@@ -114,6 +114,7 @@ def convert_agent(tool: str, source: bytes) -> bytes:
     if tool == "claude":
         return source
     fields, body = _split(source.decode("utf-8"))
+    body = re.sub(r"`(?:CLAUDE|AGENTS)\.md` / `(?:AGENTS|CLAUDE)\.md`", "`AGENTS.md`", body)
     read_only = _is_read_only(fields)
     if tool == "cursor":
         head = [f"name: {fields['name']}", f"description: {json.dumps(fields['description'], ensure_ascii=False)}",

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-10-22
+
+- Cursor and Codex agent copies now refer only to `AGENTS.md` instead of "`CLAUDE.md` / `AGENTS.md`"; Claude Code copies are unchanged.
+
 ## [1.3.1] - 2026-10-22
 
 - Install Codex skills into the supported `.agents/skills/` discovery path. Reuse existing project skill copies,
