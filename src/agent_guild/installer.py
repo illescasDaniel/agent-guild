@@ -227,6 +227,7 @@ def install_rules(ctx: Ctx, opts: Options):
     agents_md, claude_md = ctx.project / "AGENTS.md", ctx.project / "CLAUDE.md"
     target = claude_md if claude_md.exists() and not agents_md.exists() and opts.tools == {"claude"} else agents_md
     text = target.read_text(encoding="utf-8") if target.exists() else ""
+    crlf = target.exists() and b"\r\n" in target.read_bytes()
     other = claude_md if target == agents_md else agents_md
     other_text = other.read_text(encoding="utf-8") if other.exists() else ""
     added = []
@@ -244,7 +245,7 @@ def install_rules(ctx: Ctx, opts: Options):
         added.append(heading)
     if added:
         verb = "edit" if target.exists() else "create"
-        ctx.write(target, text.encode("utf-8"))
+        ctx.write(target, (text.replace("\n", "\r\n") if crlf else text).encode("utf-8"))
         (ctx.edited_existing.append(target) if target.exists() else ctx.track_new(target))
         ctx.log(f"would {verb}" if ctx.dry_run else ("edited" if target.exists() else "created"), target, "+ " + ", ".join(added))
     if target == agents_md and "claude" in opts.tools:

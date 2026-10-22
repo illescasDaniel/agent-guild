@@ -5,6 +5,7 @@
 ## [1.3.2] - 2026-10-22
 
 - Cursor and Codex agent copies now refer only to `AGENTS.md` instead of "`CLAUDE.md` / `AGENTS.md`"; Claude Code copies are unchanged.
+- Keep CRLF line endings when appending the rules sections to an existing `AGENTS.md`/`CLAUDE.md`, instead of rewriting the file with LF.
 
 ## [1.3.1] - 2026-10-22
 
