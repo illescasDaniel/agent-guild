@@ -104,6 +104,24 @@ uv run agent-guild /path/to/project --dry-run
 From a checkout, the CLI reads `agents/`, `templates/` and `development-workflow.md` at the repo root; the published
 wheel bundles them.
 
+## Adding it to a project that already has its own setup
+
+The installer never overwrites a file that differs from the shipped one (and skips CLAUDE.md sections that `AGENTS.md`
+or `CLAUDE.md` already has), so it is safe to run on a project with its own agents, skills and rules. After it runs:
+
+- **Skipped files are yours.** Anything the log marks `skipped ... differs` keeps your version. If it is an older or
+  customised copy of a shipped one (the `sdd-feature` skill, `code-grader`, `jev-memory`), diff it against the shipped
+  file and merge what you want by hand. `--force` replaces it instead.
+- **New files can land next to yours.** A skill folder you already have keeps its `SKILL.md`, but the shipped files
+  that are missing (templates, scripts) are added beside it. If `.claude/skills` is a symlink to `.cursor/skills`, the
+  log says so, and the skills are written there.
+- **Cursor reads `.claude/agents/` too.** The agents installed here work in Cursor without copies in `.cursor/agents/`
+  (`.cursor/agents/` wins on a name clash). Cursor ignores `tools`, `disallowedTools` and `effort`, so the read-only
+  agents are not read-only there. If your project has a test that requires every `.claude/agents/*.md` to have a
+  `.cursor/agents/` twin, relax it to require the twin only for the Cursor agents.
+- **Skip what you already have** with `--without memory-bank` / `jevmem` / `sdd`, for example when your own memory-bank
+  skill has a different name.
+
 ## Design choices
 
 - **The orchestrator is the only writer of memory.** Parallel coders writing `memory/` would conflict, and someone has

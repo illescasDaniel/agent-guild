@@ -85,6 +85,9 @@ def install_skills(ctx: Ctx, opts: Options) -> None:
     wanted = [c for c in COMPONENTS if opts.wants(c)]
     if not wanted:
         return
+    skills_dir = ctx.project / ".claude" / "skills"
+    if skills_dir.is_symlink():
+        ctx.log("note", skills_dir, f"is a symlink to {os.readlink(skills_dir)}: skills are written there")
     with tempfile.TemporaryDirectory(prefix="agent-guild-") as tmp:
         for component in wanted:
             url, subpath, skill_name = SKILL_SOURCES[component]
@@ -129,7 +132,7 @@ def install_rules(ctx: Ctx, opts: Options) -> None:
         added.append("@AGENTS.md import")
     for heading, body in _rule_sections(opts):
         if re.search(rf"^#+ .*{re.escape(heading)}", known, re.MULTILINE):
-            ctx.log("unchanged", claude_md, f"already has '{heading}' (CLAUDE.md or AGENTS.md)")
+            ctx.log("skipped", claude_md, f"section '{heading}' is already in CLAUDE.md or AGENTS.md")
             continue
         text = text.rstrip("\n") + ("\n\n" if text.strip() else "") + body + "\n"
         added.append(heading)

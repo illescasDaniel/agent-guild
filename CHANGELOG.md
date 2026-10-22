@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-22
+
+- The install log says `skipped ... section '<name>' is already in CLAUDE.md or AGENTS.md` instead of the confusing
+  `unchanged`, notes when `.claude/skills` is a symlink and where skills are written, and ends with a hint to merge
+  skipped files that differ by hand.
+- README: a section on adding agent-guild to a project that already has its own agents, skills and rules.
+
 ## [1.2.0] - 2026-10-22
 
 - Follow the updated sdd-feature skill: Phase 0 has a UI track (wireframe) and a system track (`DESIGN.md` with Mermaid

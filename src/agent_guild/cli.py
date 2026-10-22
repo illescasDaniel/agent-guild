@@ -10,6 +10,9 @@ from .specialists import SPECIALISTS, detect_languages
 _BUNDLED = Path(__file__).resolve().parent / "_assets"  # present in installed wheels
 DEFAULT_ASSETS = _BUNDLED if _BUNDLED.is_dir() else Path(__file__).resolve().parents[2]  # else: a source checkout
 
+KEPT_HINT = """Files marked "skipped ... differs" keep your version. If a skill or agent of yours is an older or customised
+copy of a shipped one, diff it against the shipped file and merge the changes by hand (--force replaces it)."""
+
 NEXT_STEPS = """Next steps:
   - Review the diff (git status / git diff); edit or delete any copied file or CLAUDE.md section you don't want.
   - Per machine, once: `uvx jevmem config init` and `uvx --from jevmem jevmem warmup`.
@@ -105,6 +108,8 @@ def main(argv: list[str] | None = None) -> int:
     print("\n".join(ctx.lines))
     for w in ctx.warnings:
         print(f"warning: {w}")
+    if any(line.lstrip().startswith("skipped") and "differs" in line for line in ctx.lines):
+        print(f"\n{KEPT_HINT}")
     if not args.dry_run:
         print(CODERS_NEXT_STEPS if args.coders_only else NEXT_STEPS)
         for name in sorted(args.with_coders):

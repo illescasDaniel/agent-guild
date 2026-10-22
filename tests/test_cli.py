@@ -364,3 +364,41 @@ def test_given_coders_only_without_with_then_it_is_refused(tmp_path, sources):
     # when / then
     with pytest.raises(SystemExit):
         run(project, sources, "--coders-only")
+
+
+def test_given_edited_agent_when_run_again_then_the_merge_hint_is_printed(tmp_path, sources, capsys):
+    # given
+    project = tmp_path / "p"
+    project.mkdir()
+    run(project, sources)
+    (project / ".claude/agents/coder.md").write_text("mine")
+    capsys.readouterr()
+    # when
+    run(project, sources)
+    # then
+    assert "merge the changes by hand" in capsys.readouterr().out
+
+
+def test_given_sections_already_in_agents_md_then_the_log_says_skipped_not_unchanged(tmp_path, sources, capsys):
+    # given
+    project = tmp_path / "p"
+    project.mkdir()
+    (project / "AGENTS.md").write_text("## Memory bank\n\n## Phase Gate Protocol\n")
+    # when
+    run(project, sources)
+    # then
+    out = capsys.readouterr().out
+    assert "skipped    CLAUDE.md  section 'Phase Gate Protocol' is already in CLAUDE.md or AGENTS.md" in out
+
+
+def test_given_symlinked_skills_dir_then_the_log_notes_where_skills_are_written(tmp_path, sources, capsys):
+    # given
+    project = tmp_path / "p"
+    (project / ".cursor/skills").mkdir(parents=True)
+    (project / ".claude").mkdir()
+    (project / ".claude/skills").symlink_to("../.cursor/skills")
+    # when
+    run(project, sources)
+    # then
+    assert "is a symlink to ../.cursor/skills" in capsys.readouterr().out
+    assert (project / ".cursor/skills/sdd-feature/SKILL.md").is_file()
