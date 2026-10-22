@@ -67,7 +67,7 @@ It does, in the project, for each coding tool it finds (see **Tools** below):
   instead of `disallowedTools`; `.codex/agents/*.toml`), and one shared `development-workflow.md` next to the first
   tool's agents;
 - copies the `memory-bank`, `jev-memory` and `sdd-feature` skills into that tool's skills folder (`.claude/skills/`,
-  `.cursor/skills/`, `.agents/skills/` for Codex), cloned from GitHub, or from local clones with `--sources-dir DIR`;
+  `.cursor/skills/`, `.codex/skills/` for Codex), cloned from GitHub, or from local clones with `--sources-dir DIR`;
 - adds three removable sections to `AGENTS.md`: *Agents and delegation*, *Memory bank* and *Phase Gate Protocol*. If the
   project has only a `CLAUDE.md`, they go there instead; with neither, `AGENTS.md` is created. When Claude Code is one
   of the tools, `CLAUDE.md` gets an `@AGENTS.md` import (Claude Code doesn't read `AGENTS.md`). A section that either

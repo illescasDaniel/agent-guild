@@ -458,7 +458,7 @@ def test_given_cursor_folder_when_installed_then_cursor_gets_its_own_format_and_
     assert "type" not in json.loads((project / ".cursor/mcp.json").read_text())["mcpServers"]["jevmem"]
 
 
-def test_given_codex_folder_when_installed_then_agents_are_toml_and_skills_go_to_agents_skills(tmp_path, sources, capsys):
+def test_given_codex_folder_when_installed_then_agents_are_toml_and_skills_go_to_codex_skills(tmp_path, sources, capsys):
     # given
     import tomllib
     project = tmp_path / "p"
@@ -473,7 +473,8 @@ def test_given_codex_folder_when_installed_then_agents_are_toml_and_skills_go_to
     assert architect["model_reasoning_effort"] == "high"
     assert architect["developer_instructions"].startswith("You are read-only")
     assert not tomllib.loads((project / ".codex/agents/coder.toml").read_text())["developer_instructions"].startswith("You are read-only")
-    assert (project / ".agents/skills/sdd-feature/SKILL.md").is_file()
+    assert (project / ".codex/skills/sdd-feature/SKILL.md").is_file()
+    assert not (project / ".agents").exists()
     config = tomllib.loads((project / ".codex/config.toml").read_text())
     assert config["mcp_servers"]["jevmem"]["command"] == "uvx"
     assert config["mcp_servers"]["codenav"]["args"][0] == "--from"

@@ -29,7 +29,7 @@ class Vendor:
 VENDORS = {
     "claude": Vendor("claude", ".claude/agents", ".claude/skills", ".md", ".mcp.json"),
     "cursor": Vendor("cursor", ".cursor/agents", ".cursor/skills", ".md", ".cursor/mcp.json"),
-    "codex": Vendor("codex", ".codex/agents", ".agents/skills", ".toml", ".codex/config.toml"),
+    "codex": Vendor("codex", ".codex/agents", ".codex/skills", ".toml", ".codex/config.toml"),
 }
 
 

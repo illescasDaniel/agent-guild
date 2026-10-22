@@ -73,7 +73,7 @@ SPECIALISTS = {
             server={"type": "stdio", "command": "uvx", "args": ["--from", "codenav-mcp>=0.2.1,<0.3", "codenav-mcp"]},
             tools=PYTHON_TOOLS,
             prerequisite="coder-python: needs uv and Python 3.11+ (codenav-mcp runs through uvx). For a src layout, "
-            "set CODENAV_MCP_SOURCE_ROOT in the codenav entry of .mcp.json.",
+            "set CODENAV_MCP_SOURCE_ROOT on the codenav MCP server.",
             fragment="python.md",
         ),
         Specialist(
