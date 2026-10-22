@@ -28,6 +28,7 @@ the user what needs their approval before starting anything else.
 |---|---|---|
 | `architect` | Opus | Hard thinking: design decisions, interfaces, plans, root causes. Read-only. |
 | `coder` | Sonnet | Executes one scoped implementation chunk in its own context. |
+| `coder-python`, `coder-swift`, `coder-typescript` | Sonnet | Optional. Same as `coder`, for that language, with its code-navigation MCP; use them instead of `coder` when the project has them. |
 | `code-grader` | Opus | Independent read-only grade of finished work against its spec (SDD Phase 5). |
 | `utility` | Haiku | Mechanical: quality-gate runs, git, moves/renames, bulk edits. |
 
@@ -73,6 +74,10 @@ Every brief must be self-contained:
 - For `utility` commits: files to stage and trailer lines.
 
 Never write "as discussed" or "based on the findings above".
+
+Say what to achieve, not how to search or edit. Don't tell a subagent to grep, sed or read specific files to find
+code ("grep the repo for X"): that overrides its own tools, including the project's code-navigation MCPs. Name the
+symbol or behaviour and let the subagent pick its tools.
 
 Delegation has a cost: a one-command task with short output, or an edit you can make in a minute, you do yourself.
 

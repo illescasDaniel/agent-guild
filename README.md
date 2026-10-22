@@ -46,26 +46,6 @@ uvx agent-guild /path/to/project
 | [agents/code-grader.md](agents/code-grader.md) | `~/.claude/agents/` | Opus, read-only. SDD Phase 5. Body identical to the sdd-feature skill's grader; only the frontmatter differs |
 | [agents/utility.md](agents/utility.md) | `~/.claude/agents/` | Haiku. Checks, git, moves, bulk edits |
 
-## Design choices
-
-- **The orchestrator is the only writer of memory.** Parallel coders writing `memory/` would conflict, and someone has
-  to decide what is worth remembering. Subagents can read memory, including jevmem recall, and return **Memory
-  candidates** and **Friction** sections in their reports.
-- **Subagents don't get the jevmem hooks.** The `SessionStart` and `UserPromptSubmit` hooks fire in the main session
-  only. So the agents that need history (architect, coder, grader) can call `memory_recall` themselves.
-- **The files on disk are the hand-off.** Once a wireframe, `SPEC.md` or interfaces exist, briefs point to them
-  instead of restating them. That solves the cold-start problem without long prompts.
-- **`disallowedTools` instead of a `tools` allowlist** for architect, coder and grader. They inherit project MCP
-  servers (e.g. code-navigation MCPs) without per-project edits, while jevmem writes and file edits stay
-  blocked where needed. `utility` keeps a plain allowlist.
-- **The grader runs on Opus.** The code it grades was written by Sonnet coders, so a different, stronger model gives
-  a more independent review.
-- **SDD is opt-in.** The global workflow uses SDD only when a project's `AGENTS.md` / `CLAUDE.md` adopts the Phase Gate
-  Protocol, or when you ask for the `sdd-feature` skill directly. Projects that don't want gates just leave the rule
-  out.
-- **Gates and gate status.** SDD gates stay between the orchestrator and the user. The gate status is recorded in
-  `memory/activeContext.md`, so a new session resumes at the right gate.
-
 ## Install
 
 ### Quick: the installer (per project)
@@ -96,6 +76,8 @@ It does, in the project:
 
 | Flag | Effect |
 |---|---|
+| `--with coder-python` / `coder-swift` / `coder-typescript` | Add a language coder (repeatable): the generic coder, required to use that language's code-navigation MCP ([codenav-mcp](https://github.com/illescasDaniel/codenav-mcp), [codenav-swift-mcp](https://github.com/illescasDaniel/codenav-swift-mcp), [webnav-ts-mcp](https://github.com/illescasDaniel/webnav-ts-mcp)). Also adds the MCP server to `.mcp.json` (an existing entry is kept) and a `CLAUDE.md` rule that routes that language's work to it. The MCP's own prerequisites (uv, a Swift toolchain, Node) are printed after the install |
+| `--coders-only` | With `--with`: install only the language coders (agent, MCP server, `CLAUDE.md` rule) and nothing else. After a normal install, the tool detects Python, Swift and TypeScript/JS projects and prints this command for the coders you don't have yet |
 | `--without sdd` / `memory-bank` / `jevmem` | Leave a component out. `sdd` also drops `code-grader` and the gate section; `jevmem` drops its skill, server, hooks and the auto-memory switch |
 | `--model ALIAS` | Project main-session model; default `sonnet` (the per-project alternative to the global setting below), `none` leaves it unset |
 | `--import-cursor-skills` | Also copy the project's `.cursor/skills/*` into `.claude/skills/`; skills that already exist are kept |
@@ -108,151 +90,8 @@ It does, in the project:
 
 Still per machine, once: `uvx jevmem config init` and `uvx --from jevmem jevmem warmup`.
 
-The manual steps below do the same thing by hand, and also cover the per-machine variant.
-
-### Manual install
-
-Two parts:
-
-1. **Agents and orchestrator rules**: always per machine. They're how you work, not part of any one project.
-2. **Memory and skills** (jevmem MCP server and hooks, auto-memory switch, skills): **per project (recommended)** or
-   per machine. Pick one per project, not both. Doing both injects jevmem notes twice and registers the server twice.
-
-### 1. Agents and orchestrator rules (per machine)
-
-```bash
-mkdir -p ~/.claude/agents && ln -s /path/to/agent-guild/agents/*.md ~/.claude/agents/
-```
-
-```bash
-printf '\n@/path/to/agent-guild/development-workflow.md\n' >> ~/.claude/CLAUDE.md
-```
-
-Orchestrator model: either globally, in `~/.claude/settings.json`, replace `"model": "opusplan"` with
-`"model": "sonnet"`; or only for a project, with `"model": "sonnet"` in its `.claude/settings.json` (or
-`.claude/settings.local.json` to keep it personal). The installer does the latter by default.
-
-jevmem's own settings (API key or local model, `~/.jevmem/config.jsonc`) and its embedding model are per machine
-either way:
-
-```bash
-uvx jevmem config init
-```
-
-```bash
-uvx --from jevmem jevmem warmup
-```
-
-### 2a. Memory and skills per project (recommended)
-
-Everything lives in the repo and is committed. Worktrees, branches and other contributors get the same setup, and
-nothing leaks into projects that don't use it.
-
-Run these from the project's root.
-
-**Skills**, into `.claude/skills/`:
-
-```bash
-npx skills add illescasDaniel/memory-bank -a claude-code -y
-```
-
-```bash
-npx skills add illescasDaniel/sdd-feature-skill -a claude-code -y
-```
-
-The `jev-memory` skill isn't packaged for `npx skills`. Copy it from a clone of jev-mem:
-
-```bash
-cp -r jev-mem/.claude/skills/jev-memory .claude/skills/
-```
-
-**jevmem MCP server**, in the project's `.mcp.json`, pinned:
-
-```bash
-claude mcp add --scope project jevmem -- uvx --from "jevmem>=0.4.0,<0.5" jevmem-mcp
-```
-
-If you already registered jevmem at user scope (`claude mcp add --scope user jevmem …`), that works too. The server
-only provides tools and injects nothing, and notes are stored per project (`project:<repo name>`) either way. Keep
-just one registration, so the server isn't listed twice.
-
-**Hooks and auto-memory switch**, in the project's `.claude/settings.json`:
-
-```json
-{
-  "autoMemoryEnabled": false,
-  "hooks": {
-    "SessionStart": [{"hooks": [{"type": "command", "command": "uvx --from \"jevmem>=0.4.0,<0.5\" jevmem hook session-start", "timeout": 15}]}],
-    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "uvx --from \"jevmem>=0.4.0,<0.5\" jevmem hook user-prompt", "timeout": 20}]}]
-  }
-}
-```
-
-Before setting `autoMemoryEnabled: false`, import the project's existing auto-memory notes (see
-[Importing auto-memory](#importing-auto-memory)). To turn auto-memory off only for yourself, without committing the
-change, put that key in `.claude/settings.local.json` instead.
-
-**Rules**, in the project's `AGENTS.md` / `CLAUDE.md`:
-
-- **Memory bank**: the snippet from the [memory-bank README](https://github.com/illescasDaniel/memory-bank#use-it),
-  then ask the agent to "set up the memory bank".
-- **SDD, if wanted**: the Phase Gate Protocol snippet from the
-  [sdd-feature README](https://github.com/illescasDaniel/sdd-feature-skill#add-this-to-your-agentsmd--claudemd),
-  adjusted to the project's paths. Leave it out to keep SDD manual: the skill still works when you ask for it.
-- **Quality gate command, test conventions, code-navigation MCPs**: the agents look for these there.
-
-### 2b. Memory and skills per machine
-
-For when you want the same setup in every project without touching repos. Don't combine it with 2a in the same
-project.
-
-```bash
-npx skills add illescasDaniel/memory-bank -a claude-code -g -y
-```
-
-```bash
-npx skills add illescasDaniel/sdd-feature-skill -a claude-code -g -y
-```
-
-```bash
-cp -r jev-mem/.claude/skills/jev-memory ~/.claude/skills/
-```
-
-```bash
-claude mcp add --scope user jevmem -- uvx --from "jevmem>=0.4.0,<0.5" jevmem-mcp
-```
-
-In `~/.claude/settings.json`, add `"autoMemoryEnabled": false` at the top level. Then merge these hooks into the
-existing `hooks` block, next to the `PreToolUse` one:
-
-```json
-"SessionStart": [{"hooks": [{"type": "command", "command": "uvx --from \"jevmem>=0.4.0,<0.5\" jevmem hook session-start", "timeout": 15}]}],
-"UserPromptSubmit": [{"hooks": [{"type": "command", "command": "uvx --from \"jevmem>=0.4.0,<0.5\" jevmem hook user-prompt", "timeout": 20}]}]
-```
-
-Then remove the same hooks, server and skills from any project that already defines them.
-
-The per-project rules in `AGENTS.md` / `CLAUDE.md` (memory bank snippet, optional SDD snippet, quality gate) are still
-added per project.
-
-### Importing auto-memory
-
-Claude Code's built-in auto-memory (`~/.claude/projects/<encoded-path>/memory/*.md`) is a second fact store that
-overlaps with jevmem. Before switching it off for a project, import its notes. Run this from the project's root, so
-the notes land in the same `project:<name>` scope that the hooks and MCP server use. Point `--root` at that project's
-folder only, because the default imports every project's memory at once:
-
-```bash
-uvx jevmem import-claude-memory --root ~/.claude/projects/<encoded-project-path>
-```
-
-- **Folder name:** the project's absolute path with `/` replaced by `-`.
-- **Jev must be configured.** Writes are screened by Jev, so the key or local model must be set up, or the notes are
-  queued unscreened and hidden from recall.
-- **Check the result** with `uvx jevmem list`, and `memory_forget` anything stale.
-
-After the switch, the old files stay on disk, but Claude no longer reads or writes them. To turn auto-memory off for a
-single shell instead, set the environment variable `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`.
+Prefer to do it by hand, or want the per-machine variant (agents and memory in `~/.claude` for every project)? See
+[docs/manual_installation.md](https://github.com/illescasDaniel/agent-guild/blob/main/docs/manual_installation.md).
 
 ## Development
 
@@ -264,6 +103,32 @@ uv run agent-guild /path/to/project --dry-run
 
 From a checkout, the CLI reads `agents/`, `templates/` and `development-workflow.md` at the repo root; the published
 wheel bundles them.
+
+## Design choices
+
+- **The orchestrator is the only writer of memory.** Parallel coders writing `memory/` would conflict, and someone has
+  to decide what is worth remembering. Subagents can read memory, including jevmem recall, and return **Memory
+  candidates** and **Friction** sections in their reports.
+- **Subagents don't get the jevmem hooks.** The `SessionStart` and `UserPromptSubmit` hooks fire in the main session
+  only. So the agents that need history (architect, coder, grader) can call `memory_recall` themselves.
+- **The files on disk are the hand-off.** Once a wireframe, `SPEC.md` or interfaces exist, briefs point to them
+  instead of restating them. That solves the cold-start problem without long prompts.
+- **`disallowedTools` instead of a `tools` allowlist** for architect, coder and grader. They inherit project MCP
+  servers (e.g. code-navigation MCPs) without per-project edits, while jevmem writes and file edits stay
+  blocked where needed. `utility` keeps a plain allowlist.
+- **Language coders are separate, opt-in agents with an allowlist.** A generic `coder` only inherits the project's
+  navigation MCPs; in practice it still reached for `grep` and `sed`, because the MCP tools arrive deferred (name
+  only) and the brief or its own habits point elsewhere. `coder-python`, `coder-swift` and `coder-typescript`
+  (`--with`) are generated from `coder.md` plus a navigation section that names the MCP's tools, and list those tools
+  in `tools:` so they load up front. A `CLAUDE.md` rule routes that language's work to them. Without `--with`, nothing
+  changes.
+- **The grader runs on Opus.** The code it grades was written by Sonnet coders, so a different, stronger model gives
+  a more independent review.
+- **SDD is opt-in.** The global workflow uses SDD only when a project's `AGENTS.md` / `CLAUDE.md` adopts the Phase Gate
+  Protocol, or when you ask for the `sdd-feature` skill directly. Projects that don't want gates just leave the rule
+  out.
+- **Gates and gate status.** SDD gates stay between the orchestrator and the user. The gate status is recorded in
+  `memory/activeContext.md`, so a new session resumes at the right gate.
 
 ## License
 

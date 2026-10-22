@@ -1,6 +1,6 @@
 [project]
 name = "agent-guild"
-version = "1.0.0"
+version = "1.1.0"
 description = "A multi-agent setup for Claude Code (orchestrator + architect, coder, grader, utility subagents) with memory-bank, jevmem and Spec-Driven Development wired in, installed into a project with one command."
 readme = "README.md"
 license = "MIT"

@@ -211,3 +211,156 @@ def test_given_no_git_exclude_flag_then_git_exclude_is_untouched(tmp_path, sourc
     # then
     assert (project / ".git/info/exclude").read_text() == before
     assert ".claude" in _git(project, "status", "--short")
+
+
+def test_given_no_with_flag_then_no_language_coder_or_navigation_server_is_installed(tmp_path, sources):
+    # given
+    project = tmp_path / "p"
+    project.mkdir()
+    # when
+    run(project, sources)
+    # then
+    assert sorted(p.name for p in (project / ".claude/agents").glob("coder-*.md")) == []
+    assert set(json.loads((project / ".mcp.json").read_text())["mcpServers"]) == {"jevmem"}
+    assert "coder-python" not in (project / "CLAUDE.md").read_text()
+
+
+@pytest.mark.parametrize("agent, server_key, tool", [
+    ("coder-python", "codenav", "rename_symbol"),
+    ("coder-swift", "codenav-swift", "rename_symbol"),
+    ("coder-typescript", "webnav", "rename_symbol"),
+])
+def test_given_with_coder_then_agent_server_and_routing_rule_are_installed(tmp_path, sources, agent, server_key, tool):
+    # given
+    project = tmp_path / "p"
+    project.mkdir()
+    # when
+    run(project, sources, "--with", agent)
+    # then
+    text = (project / ".claude/agents" / f"{agent}.md").read_text()
+    frontmatter, body = text.split("---\n")[1:3]
+    assert f"name: {agent}\n" in frontmatter
+    assert "disallowedTools" not in frontmatter
+    assert f"mcp__{server_key}__{tool}" in frontmatter
+    assert "mcp__jevmem__memory_write" not in frontmatter
+    assert "model: sonnet" in frontmatter
+    assert "## Rules" in body and "navigation (" in body
+    assert server_key in json.loads((project / ".mcp.json").read_text())["mcpServers"]
+    claude_md = (project / "CLAUDE.md").read_text()
+    assert f"`{agent}`" in claude_md
+    assert claude_md.index(f"`{agent}`") < claude_md.index("## Memory bank")
+
+
+def test_given_with_coder_when_run_again_then_nothing_changes_and_rule_is_not_repeated(tmp_path, sources):
+    # given
+    project = tmp_path / "p"
+    project.mkdir()
+    run(project, sources, "--with", "coder-python", "--with", "coder-swift")
+    before = {p: p.read_bytes() for p in project.rglob("*") if p.is_file()}
+    # when
+    run(project, sources, "--with", "coder-python", "--with", "coder-swift")
+    # then
+    assert {p: p.read_bytes() for p in project.rglob("*") if p.is_file()} == before
+    assert (project / "CLAUDE.md").read_text().count("## Python code goes to") == 1
+
+
+def test_given_existing_server_entry_when_with_coder_then_it_is_kept(tmp_path, sources):
+    # given
+    project = tmp_path / "p"
+    project.mkdir()
+    custom = {"command": "codenav-mcp", "env": {"CODENAV_MCP_SOURCE_ROOT": "src"}}
+    (project / ".mcp.json").write_text(json.dumps({"mcpServers": {"codenav": custom}}))
+    # when
+    run(project, sources, "--with", "coder-python")
+    # then
+    assert json.loads((project / ".mcp.json").read_text())["mcpServers"]["codenav"] == custom
+
+
+def test_given_with_coder_and_without_jevmem_then_server_is_still_added(tmp_path, sources):
+    # given
+    project = tmp_path / "p"
+    project.mkdir()
+    # when
+    run(project, sources, "--without", "jevmem", "--with", "coder-typescript")
+    # then
+    assert set(json.loads((project / ".mcp.json").read_text())["mcpServers"]) == {"webnav"}
+
+
+def touch(root, *names):
+    for name in names:
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_text("")
+
+
+def test_given_python_project_without_coder_when_installed_then_the_command_to_add_it_is_suggested(tmp_path, sources, capsys):
+    # given
+    project = tmp_path / "p"
+    touch(project, "pyproject.toml", "src/app/main.py")
+    # when
+    run(project, sources)
+    # then
+    out = capsys.readouterr().out
+    assert f"uvx agent-guild {project} --with coder-python --coders-only" in out
+    assert "coder-swift" not in out and "coder-typescript" not in out
+
+
+def test_given_mixed_project_then_every_matching_language_is_suggested(tmp_path, sources, capsys):
+    # given
+    project = tmp_path / "p"
+    touch(project, "Package.swift", "web/package.json", "node_modules/x/pyproject.toml", ".venv/lib/a.py")
+    # when
+    run(project, sources)
+    # then
+    out = capsys.readouterr().out
+    assert "--with coder-swift" in out and "--with coder-typescript" in out
+    assert "--with coder-python" not in out  # only inside skipped folders
+
+
+def test_given_coder_chosen_or_already_installed_then_it_is_not_suggested(tmp_path, sources, capsys):
+    # given
+    project = tmp_path / "p"
+    touch(project, "pyproject.toml", "package.json")
+    run(project, sources, "--with", "coder-python")
+    capsys.readouterr()
+    # when
+    run(project, sources)  # coder-python is now on disk; coder-typescript still isn't
+    # then
+    out = capsys.readouterr().out
+    assert "--with coder-python" not in out and "--with coder-typescript" in out
+
+
+def test_given_dry_run_or_no_known_language_then_nothing_is_suggested(tmp_path, sources, capsys):
+    # given
+    project = tmp_path / "p"
+    touch(project, "pyproject.toml")
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    # when
+    run(project, sources, "--dry-run")
+    run(empty, sources)
+    # then
+    assert "--coders-only" not in capsys.readouterr().out
+
+
+def test_given_coders_only_then_only_the_coder_server_and_rule_are_added(tmp_path, sources):
+    # given
+    project = tmp_path / "p"
+    project.mkdir()
+    (project / "CLAUDE.md").write_text("# Mine\n")
+    # when
+    run(project, sources, "--with", "coder-python", "--coders-only")
+    # then
+    files = {p.relative_to(project).as_posix() for p in project.rglob("*") if p.is_file()}
+    assert files == {".claude/agents/coder-python.md", ".mcp.json", "CLAUDE.md"}
+    assert set(json.loads((project / ".mcp.json").read_text())["mcpServers"]) == {"codenav"}
+    claude_md = (project / "CLAUDE.md").read_text()
+    assert claude_md.startswith("# Mine") and "`coder-python`" in claude_md and "Memory bank" not in claude_md
+
+
+def test_given_coders_only_without_with_then_it_is_refused(tmp_path, sources):
+    # given
+    project = tmp_path / "p"
+    project.mkdir()
+    # when / then
+    with pytest.raises(SystemExit):
+        run(project, sources, "--coders-only")

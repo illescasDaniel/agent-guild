@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .files import Ctx, copy_tree, read_json, write_bytes, write_json
+from .specialists import SPECIALISTS, render
 
 JEVMEM_SPEC = "jevmem>=0.4.0,<0.5"
 JEVMEM_SERVER = {"type": "stdio", "command": "uvx", "args": ["--from", JEVMEM_SPEC, "jevmem-mcp"]}
@@ -43,6 +44,8 @@ class Options:
     assets: Path
     sources_dir: Path | None = None
     without: frozenset[str] = frozenset()
+    with_coders: frozenset[str] = frozenset()
+    coders_only: bool = False
     model: str | None = "sonnet"
     keep_auto_memory: bool = False
     personal_settings: bool = False
@@ -64,6 +67,11 @@ def install_agents(ctx: Ctx, opts: Options) -> None:
         ctx.project / ".claude" / "development-workflow.md",
         (opts.assets / "development-workflow.md").read_bytes(),
     )
+
+
+def install_specialists(ctx: Ctx, opts: Options) -> None:
+    for name in sorted(opts.with_coders):
+        write_bytes(ctx, ctx.project / ".claude" / "agents" / f"{name}.md", render(SPECIALISTS[name], opts.assets))
 
 
 def _fetch(url: str, into: Path) -> Path:
@@ -95,6 +103,20 @@ def install_skills(ctx: Ctx, opts: Options) -> None:
             copy_tree(ctx, src, ctx.project / ".claude" / "skills" / skill_name)
 
 
+def _rule_sections(opts: Options) -> list[tuple[str, str]]:
+    """(heading that marks the section as present, body) for every CLAUDE.md section to add, in order."""
+    if opts.coders_only:
+        return [(SPECIALISTS[n].agent, SPECIALISTS[n].rule_body) for n in sorted(opts.with_coders)]
+    sections = []
+    for heading, template, component in RULE_SECTIONS:
+        if component is None or opts.wants(component):
+            body = (opts.assets / "templates" / template).read_text(encoding="utf-8").strip()
+            sections.append((heading, body))
+        if heading == "Agents and delegation":
+            sections += [(SPECIALISTS[n].agent, SPECIALISTS[n].rule_body) for n in sorted(opts.with_coders)]
+    return sections
+
+
 def install_rules(ctx: Ctx, opts: Options) -> None:
     """The new sections live in CLAUDE.md (Claude-only rules); AGENTS.md stays tool-neutral and is just imported."""
     agents_md, claude_md = ctx.project / "AGENTS.md", ctx.project / "CLAUDE.md"
@@ -105,13 +127,10 @@ def install_rules(ctx: Ctx, opts: Options) -> None:
     if agents_md.exists() and "@AGENTS.md" not in text:
         text = "@AGENTS.md\n" + (("\n" + text) if text.strip() else "")
         added.append("@AGENTS.md import")
-    for heading, template, component in RULE_SECTIONS:
-        if component is not None and not opts.wants(component):
-            continue
+    for heading, body in _rule_sections(opts):
         if re.search(rf"^#+ .*{re.escape(heading)}", known, re.MULTILINE):
             ctx.log("unchanged", claude_md, f"already has '{heading}' (CLAUDE.md or AGENTS.md)")
             continue
-        body = (opts.assets / "templates" / template).read_text(encoding="utf-8").strip()
         text = text.rstrip("\n") + ("\n\n" if text.strip() else "") + body + "\n"
         added.append(heading)
     if added:
@@ -181,20 +200,29 @@ def install_settings(ctx: Ctx, opts: Options) -> None:
 
 
 def install_mcp(ctx: Ctx, opts: Options) -> None:
-    if not opts.wants("jevmem"):
+    servers_to_add = {}
+    if opts.wants("jevmem") and not opts.coders_only:
+        servers_to_add["jevmem"] = JEVMEM_SERVER
+    for name in sorted(opts.with_coders):
+        spec = SPECIALISTS[name]
+        servers_to_add[spec.server_key] = spec.server
+    if not servers_to_add:
         return
     path = ctx.project / ".mcp.json"
     data, indent = read_json(path)
     servers = data.setdefault("mcpServers", {})
     changes = []
-    if "jevmem" not in servers:
-        servers["jevmem"] = JEVMEM_SERVER
-        changes.append("jevmem server")
+    for key, server in servers_to_add.items():
+        if key not in servers:
+            servers[key] = server
+            changes.append(f"{key} server")
     user_config = Path.home() / ".claude.json"
     if user_config.exists():
         try:
-            if "jevmem" in json.loads(user_config.read_text(encoding="utf-8")).get("mcpServers", {}):
-                ctx.warn("jevmem is also registered at user scope; keep one registration so the server isn't listed twice.")
+            registered = json.loads(user_config.read_text(encoding="utf-8")).get("mcpServers", {})
+            for key in servers_to_add:
+                if key in registered:
+                    ctx.warn(f"{key} is also registered at user scope; keep one registration so the server isn't listed twice.")
         except (json.JSONDecodeError, AttributeError):
             pass
     write_json(ctx, path, data, indent, changes)
@@ -257,9 +285,16 @@ def git_exclude(ctx: Ctx, opts: Options) -> None:
 
 
 def run_all(ctx: Ctx, opts: Options) -> None:
+    if opts.coders_only:  # add language coders to an existing install: their agent, MCP server and routing rule only
+        install_specialists(ctx, opts)
+        install_rules(ctx, opts)
+        install_mcp(ctx, opts)
+        git_exclude(ctx, opts)
+        return
     # The import runs before the auto-memory switch is flipped, so no notes are lost.
     import_auto_memory(ctx, opts)
     install_agents(ctx, opts)
+    install_specialists(ctx, opts)
     install_skills(ctx, opts)
     import_cursor_skills(ctx, opts)
     install_rules(ctx, opts)

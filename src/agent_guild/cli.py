@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .files import Ctx
 from .installer import COMPONENTS, Options, run_all
+from .specialists import SPECIALISTS, detect_languages
 
 _BUNDLED = Path(__file__).resolve().parent / "_assets"  # present in installed wheels
 DEFAULT_ASSETS = _BUNDLED if _BUNDLED.is_dir() else Path(__file__).resolve().parents[2]  # else: a source checkout
@@ -14,6 +15,26 @@ NEXT_STEPS = """Next steps:
   - Per machine, once: `uvx jevmem config init` and `uvx --from jevmem jevmem warmup`.
   - With memory-bank: ask Claude to "set up the memory bank".
   - Restart Claude Code in the project so the agents, skills, hooks and MCP server load."""
+
+
+CODERS_NEXT_STEPS = """Next steps:
+  - Review the diff (git status / git diff).
+  - Restart Claude Code in the project so the agents and MCP server load."""
+
+
+def suggest_coders(project: Path, chosen: list[str]) -> None:
+    """After an install, point at the language coders that fit the project and are not installed yet."""
+    missing = [
+        name for name in detect_languages(project)
+        if name not in chosen and not (project / ".claude" / "agents" / f"{name}.md").exists()
+    ]
+    if not missing:
+        return
+    print("\nThis project looks like it uses code that a language coder can navigate and refactor with a "
+          "code-navigation MCP (optional; adds only the agent, the MCP server and a CLAUDE.md routing rule):")
+    for name in missing:
+        spec = SPECIALISTS[name]
+        print(f"  - {spec.label}:  uvx agent-guild {project} --with {name} --coders-only")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -27,6 +48,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--without", action="append", default=[], choices=COMPONENTS, metavar="COMPONENT",
                    help=f"leave a component out (repeatable): {', '.join(COMPONENTS)}. "
                         "'sdd' also drops the code-grader agent; 'jevmem' drops skill, MCP server, hooks and the auto-memory switch")
+    p.add_argument("--with", dest="with_coders", action="append", default=[], choices=sorted(SPECIALISTS),
+                   metavar="CODER",
+                   help=f"add a language coder (repeatable): {', '.join(sorted(SPECIALISTS))}. Each is the generic coder plus "
+                        "a code-navigation MCP it must use for that language; the MCP server and a CLAUDE.md routing rule "
+                        "are added too. Off by default")
+    p.add_argument("--coders-only", action="store_true",
+                   help="with --with: install only the language coders (agent, MCP server, routing rule) and leave "
+                        "everything else in the project untouched")
     p.add_argument("--model", default="sonnet", metavar="ALIAS",
                    help="the project's main-session model (default: sonnet; 'none' leaves it unset)")
     p.add_argument("--personal-settings", action="store_true",
@@ -48,7 +77,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.coders_only and not args.with_coders:
+        parser.error("--coders-only needs at least one --with")
     project = args.project.expanduser().resolve()
     if not project.is_dir():
         raise SystemExit(f"error: {project} is not a directory")
@@ -59,6 +91,8 @@ def main(argv: list[str] | None = None) -> int:
         assets=args.assets,
         sources_dir=args.sources_dir.expanduser().resolve() if args.sources_dir else None,
         without=frozenset(args.without),
+        with_coders=frozenset(args.with_coders),
+        coders_only=args.coders_only,
         model=None if args.model.lower() == "none" else args.model,
         keep_auto_memory=args.keep_auto_memory,
         personal_settings=args.personal_settings,
@@ -72,5 +106,8 @@ def main(argv: list[str] | None = None) -> int:
     for w in ctx.warnings:
         print(f"warning: {w}")
     if not args.dry_run:
-        print(NEXT_STEPS)
+        print(CODERS_NEXT_STEPS if args.coders_only else NEXT_STEPS)
+        for name in sorted(args.with_coders):
+            print(f"  - {SPECIALISTS[name].prerequisite}")
+        suggest_coders(project, args.with_coders)
     return 0
