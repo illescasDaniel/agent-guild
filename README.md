@@ -70,13 +70,16 @@ It does, in the project, for each coding tool it finds (see **Tools** below):
   instead of `disallowedTools`; `.codex/agents/*.toml`), and one shared `development-workflow.md` next to the first
   tool's agents;
 - copies the `memory-bank`, `jev-memory` and `sdd-feature` skills into that tool's skills folder (`.claude/skills/`,
-  `.cursor/skills/`, `.codex/skills/` for Codex), cloned from GitHub, or from local clones with `--sources-dir DIR`;
+  `.cursor/skills/`, `.agents/skills/` for Codex), cloned from GitHub, or from local clones with `--sources-dir DIR`;
 - adds three removable sections to `AGENTS.md`: *Agents and delegation*, *Memory bank* and *Phase Gate Protocol*. If the
-  project has only a `CLAUDE.md`, they go there instead; with neither, `AGENTS.md` is created. When Claude Code is one
-  of the tools, `CLAUDE.md` gets an `@AGENTS.md` import (Claude Code doesn't read `AGENTS.md`). A section that either
-  file already has is not added again;
+  project has only a `CLAUDE.md` and only Claude Code is selected, they go there instead. Adding Cursor or Codex
+  migrates existing shared rules into `AGENTS.md`, preserving custom section content and leaving a `CLAUDE.md`
+  import for Claude Code. If both files exist, only the selected shared sections move; other Claude-only sections
+  stay there. Conflicting duplicate sections are kept with a warning. With neither file, `AGENTS.md` is created.
+  Claude Code gets an `@AGENTS.md` import because it does not read `AGENTS.md` directly;
 - adds the pinned jevmem server to the tool's MCP config (`.mcp.json`, `.cursor/mcp.json`, `.codex/config.toml`),
-  merging into existing files;
+  merging into existing files. New Codex servers reuse matching project entries from `.mcp.json`, then
+  `.cursor/mcp.json`, before falling back to defaults; existing Codex entries always win;
 - for Claude Code only: adds the jevmem hooks to `.claude/settings.json`, sets `autoMemoryEnabled: false` and the
   project's model to `sonnet`.
 
@@ -126,6 +129,11 @@ or `CLAUDE.md` already has), so it is safe to run on a project with its own agen
 - **Skipped files are yours.** Anything the log marks `skipped ... differs` keeps your version. If it is an older or
   customised copy of a shipped one (the `sdd-feature` skill, `code-grader`, `jev-memory`), diff it against the shipped
   file and merge what you want by hand. `--force` replaces it instead.
+- **Adding Codex reuses project skills.** For a missing `.agents/skills/<name>`, an existing copy from
+  `.claude/skills`, `.cursor/skills` or the legacy `.codex/skills` is copied in that order, including supporting files.
+  Existing `.agents/skills` copies remain protected. This is a plain copy; later edits are not synchronized. Review
+  the selected source in the install log if your tools have intentionally different skill versions. Codex's supported
+  repository discovery path is [`.agents/skills`](https://learn.chatgpt.com/docs/build-skills).
 - **New files can land next to yours.** A skill folder you already have keeps its `SKILL.md`, but the shipped files
   that are missing (templates, scripts) are added beside it. If `.claude/skills` is a symlink to `.cursor/skills`, the
   log says so, and the skills are written there.

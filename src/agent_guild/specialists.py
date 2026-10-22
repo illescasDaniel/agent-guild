@@ -6,6 +6,7 @@ frontmatter (name, description, tool allowlist) and a per-language navigation se
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import textwrap
@@ -127,7 +128,7 @@ def render(spec: Specialist, assets: Path) -> bytes:
         if line.startswith("name:"):
             line = f"name: {spec.agent}"
         elif line.startswith("description:"):
-            line = f"description: {spec.description}"
+            line = f"description: {json.dumps(spec.description, ensure_ascii=False)}"
         elif line.startswith("disallowedTools:"):
             line = f"tools: {tools}"  # an allowlist replaces the denylist: the codenav tools load up front
         lines.append(line)

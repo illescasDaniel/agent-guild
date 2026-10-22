@@ -97,6 +97,15 @@ def install_skills(ctx: Ctx, opts: Options) -> None:
     if not wanted:
         return
     skills_dirs = [ctx.project / VENDORS[t].skills_dir for t in opts.selected()]
+    # Snapshot project copies before installing: a new generic copy must not mask a customization.
+    existing_skills = {}
+    for component in wanted:
+        skill_name = SKILL_SOURCES[component][2]
+        for folder in (".claude/skills", ".cursor/skills", ".codex/skills"):
+            candidate = ctx.project / folder / skill_name
+            if (candidate / "SKILL.md").is_file():
+                existing_skills[component] = candidate
+                break
     for skills_dir in skills_dirs:
         if skills_dir.is_symlink():
             ctx.log("note", skills_dir, f"is a symlink to {os.readlink(skills_dir)}: skills are written there")
@@ -116,7 +125,14 @@ def install_skills(ctx: Ctx, opts: Options) -> None:
             if not (src / "SKILL.md").is_file():
                 raise SystemExit(f"error: no SKILL.md in {src}")
             for skills_dir in skills_dirs:
-                copy_tree(ctx, src, skills_dir / skill_name)
+                dest = skills_dir / skill_name
+                if skills_dir == ctx.project / VENDORS["codex"].skills_dir and not dest.exists() and component in existing_skills:
+                    local = existing_skills[component]
+                    ctx.log("note", dest, f"reusing project skill from {local.relative_to(ctx.project)}")
+                    copy_tree(ctx, local, dest)
+                # Fill missing shipped files on the first run as well as later runs.
+                # Existing custom files remain protected by copy_tree's normal policy.
+                copy_tree(ctx, src, dest)
 
 
 def _rule_sections(opts: Options) -> list[tuple[str, str]]:
@@ -136,17 +152,56 @@ def _rule_sections(opts: Options) -> list[tuple[str, str]]:
     return sections
 
 
+def _take_rule_section(text: str, marker: str) -> tuple[str, str]:
+    headings = list(re.finditer(r"^(#{1,6})[ \t]+(.+)$", text, re.MULTILINE))
+    for index, heading in enumerate(headings):
+        if marker not in heading.group(2):
+            continue
+        end = next((h.start() for h in headings[index + 1:] if len(h.group(1)) <= len(heading.group(1))), len(text))
+        return text[heading.start():end].rstrip(), text[:heading.start()] + text[end:]
+    return "", text
+
+
+def _migrate_shared_rules(ctx: Ctx, opts: Options, agents_md: Path, claude_md: Path) -> tuple[str, str]:
+    agents = agents_md.read_text(encoding="utf-8") if agents_md.exists() else ""
+    claude = claude_md.read_text(encoding="utf-8") if claude_md.exists() else ""
+    if not claude or not opts.tools - {"claude"}:
+        return agents, claude
+    if not agents_md.exists():
+        # All existing project rules need to remain visible when adding a second tool.
+        agents = re.sub(r"^@AGENTS\.md[ \t]*\n?", "", claude, flags=re.MULTILINE)
+        claude = "@AGENTS.md\n"
+    else:
+        for marker, _ in _rule_sections(opts):
+            section, remainder = _take_rule_section(claude, marker)
+            if not section:
+                continue
+            if _take_rule_section(agents, marker)[0]:
+                ctx.warn(f"section '{marker}' is in both AGENTS.md and CLAUDE.md; review the copies for conflicting rules.")
+                continue
+            agents = agents.rstrip() + "\n\n" + section + "\n"
+            claude = remainder
+    for path, text in ((agents_md, agents), (claude_md, claude)):
+        original = path.read_text(encoding="utf-8") if path.exists() else ""
+        if text != original:
+            (ctx.edited_existing.append(path) if path.exists() else ctx.track_new(path))
+            if not ctx.dry_run:
+                path.write_text(text, encoding="utf-8")
+            ctx.log("would migrate" if ctx.dry_run else "migrated", path, "shared rules to AGENTS.md")
+    return agents, claude
+
+
 def install_rules(ctx: Ctx, opts: Options) -> None:
     """Add the rules sections to AGENTS.md (read by Codex, Cursor and others); CLAUDE.md only when it is the sole file.
 
     Claude Code does not read AGENTS.md, so when it is a selected tool CLAUDE.md gets an `@AGENTS.md` import.
     """
     agents_md, claude_md = ctx.project / "AGENTS.md", ctx.project / "CLAUDE.md"
-    target = claude_md if claude_md.exists() and not agents_md.exists() else agents_md
-    other = claude_md if target == agents_md else agents_md
+    agents_text, claude_text = _migrate_shared_rules(ctx, opts, agents_md, claude_md)
+    target = claude_md if claude_md.exists() and not agents_md.exists() and not opts.tools - {"claude"} else agents_md
     existed = target.exists()
-    text = target.read_text(encoding="utf-8") if existed else ""
-    known = text + (other.read_text(encoding="utf-8") if other.exists() else "")
+    text = claude_text if target == claude_md else agents_text
+    known = text + (agents_text if target == claude_md else claude_text)
     added = []
     for heading, body in _rule_sections(opts):
         if re.search(rf"^#+ .*{re.escape(heading)}", known, re.MULTILINE):
@@ -160,11 +215,11 @@ def install_rules(ctx: Ctx, opts: Options) -> None:
         verb = "edited" if existed else "created"
         (ctx.edited_existing.append(target) if existed else ctx.track_new(target))
         ctx.log(f"would {verb[:-1]}" if ctx.dry_run else verb, target, "+ " + ", ".join(added))
-    if target == agents_md and "claude" in opts.tools:
-        _import_agents_md(ctx, claude_md)
-    if target == claude_md and opts.tools - {"claude"}:
-        ctx.warn("this project only has a CLAUDE.md, which Codex and Cursor don't read: rename it to AGENTS.md "
-                 "(and keep a CLAUDE.md containing `@AGENTS.md`) so every tool gets the rules.")
+    if target == agents_md and ("claude" in opts.tools or claude_md.exists()):
+        if not ctx.dry_run:
+            _import_agents_md(ctx, claude_md)
+        elif "@AGENTS.md" not in claude_text:
+            ctx.log("would edit" if claude_md.exists() else "would create", claude_md, "+ @AGENTS.md import")
 
 
 def _import_agents_md(ctx: Ctx, claude_md: Path) -> None:
@@ -256,8 +311,15 @@ def install_mcp(ctx: Ctx, opts: Options) -> None:
         servers_to_add[spec.server_key] = spec.server
     if not servers_to_add:
         return
+    codex_servers = dict(servers_to_add)
+    if "codex" in opts.tools:
+        for source in (".cursor/mcp.json", ".mcp.json"):
+            existing, _ = read_json(ctx.project / source)
+            for key, server in existing.get("mcpServers", {}).items():
+                if key in codex_servers:
+                    codex_servers[key] = server
     for tool in opts.selected():
-        _write_mcp(ctx, tool, servers_to_add)
+        _write_mcp(ctx, tool, codex_servers if tool == "codex" else servers_to_add)
     user_config = Path.home() / ".claude.json"
     if user_config.exists() and "claude" in opts.tools:
         try:

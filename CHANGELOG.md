@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-22
+
+- Install Codex skills into the supported `.agents/skills/` discovery path. Reuse existing project skill copies,
+  including supporting files, when adding Codex; legacy `.codex/skills/` installs are preserved as a migration source.
+- Migrate shared rules from `CLAUDE.md` into `AGENTS.md` when adding Cursor or Codex, preserving project customizations,
+  Claude-only sections and the Claude import shim. Warn on conflicting duplicate sections. Dry runs remain read-only.
+- Reuse existing project MCP arguments and environment settings when adding a Codex server, while preserving existing
+  Codex entries. Generated shared rules explicitly tell every tool to read the workflow file.
+- Quote language-coder descriptions as valid YAML, and decode quoted values before converting to Cursor or Codex.
+
 ## [1.3.0] - 2026-10-22
 
 - Cursor and Codex support. The installer detects the tools a project uses (`.claude/` or `CLAUDE.md`, `.cursor/`,

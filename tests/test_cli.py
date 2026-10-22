@@ -43,7 +43,7 @@ def test_given_empty_project_when_installed_then_everything_is_copied(tmp_path, 
         assert (project / ".claude/skills" / skill / "SKILL.md").is_file()
     assert (project / "CLAUDE.md").read_text() == "@AGENTS.md\n"
     agents_md = (project / "AGENTS.md").read_text()
-    assert "@.claude/development-workflow.md" in agents_md
+    assert "Read `.claude/development-workflow.md`." in agents_md
     assert "## Memory bank" in agents_md and "Phase Gate Protocol" in agents_md
     settings = json.loads((project / ".claude/settings.json").read_text())
     assert settings["model"] == "sonnet" and settings["autoMemoryEnabled"] is False
@@ -454,12 +454,12 @@ def test_given_cursor_folder_when_installed_then_cursor_gets_its_own_format_and_
     for skill in ("memory-bank", "jev-memory", "sdd-feature"):
         assert (project / ".cursor/skills" / skill / "SKILL.md").is_file()
     assert (project / ".cursor/development-workflow.md").is_file()
-    assert "@.cursor/development-workflow.md" in (project / "AGENTS.md").read_text()
+    assert "Read `.cursor/development-workflow.md`." in (project / "AGENTS.md").read_text()
     assert "jevmem" in json.loads((project / ".cursor/mcp.json").read_text())["mcpServers"]
     assert "type" not in json.loads((project / ".cursor/mcp.json").read_text())["mcpServers"]["jevmem"]
 
 
-def test_given_codex_folder_when_installed_then_agents_are_toml_and_skills_go_to_codex_skills(tmp_path, sources, capsys):
+def test_given_codex_folder_when_installed_then_agents_are_toml_and_skills_go_to_agents_skills(tmp_path, sources, capsys):
     # given
     import tomllib
     project = tmp_path / "p"
@@ -474,8 +474,8 @@ def test_given_codex_folder_when_installed_then_agents_are_toml_and_skills_go_to
     assert architect["model_reasoning_effort"] == "high"
     assert architect["developer_instructions"].startswith("You are read-only")
     assert not tomllib.loads((project / ".codex/agents/coder.toml").read_text())["developer_instructions"].startswith("You are read-only")
-    assert (project / ".codex/skills/sdd-feature/SKILL.md").is_file()
-    assert not (project / ".agents").exists()
+    assert (project / ".agents/skills/sdd-feature/SKILL.md").is_file()
+    assert not (project / ".codex/skills").exists()
     config = tomllib.loads((project / ".codex/config.toml").read_text())
     assert config["mcp_servers"]["jevmem"]["command"] == "uvx"
     assert config["mcp_servers"]["codenav"]["args"][0] == "--from"
@@ -535,7 +535,7 @@ def test_given_codex_config_with_other_settings_then_servers_are_appended_and_ru
     assert (project / ".codex/config.toml").read_text().count("[mcp_servers.codenav-swift]") == 1
 
 
-def test_given_claude_md_only_and_codex_then_a_warning_says_codex_will_not_read_it(tmp_path, sources, capsys):
+def test_given_claude_md_only_and_codex_then_rules_migrate_to_agents_md(tmp_path, sources, capsys):
     # given
     project = tmp_path / "p"
     (project / ".codex").mkdir(parents=True)
@@ -543,7 +543,8 @@ def test_given_claude_md_only_and_codex_then_a_warning_says_codex_will_not_read_
     # when
     run(project, sources)
     # then
-    assert "only has a CLAUDE.md" in capsys.readouterr().out
+    assert (project / "AGENTS.md").read_text().startswith("# Mine\n")
+    assert (project / "CLAUDE.md").read_text() == "@AGENTS.md\n"
 
 
 def test_given_crlf_agent_source_when_converting_then_same_result_as_lf():
@@ -551,3 +552,131 @@ def test_given_crlf_agent_source_when_converting_then_same_result_as_lf():
     lf = b'---\nname: x\ndescription: d\ndisallowedTools: Edit, Write\n---\nBody\n'
     for tool in ("cursor", "codex"):
         assert convert_agent(tool, lf.replace(b"\n", b"\r\n")) == convert_agent(tool, lf)
+
+
+def test_given_rules_only_in_claude_when_adding_codex_then_custom_sections_move_without_losing_other_rules(tmp_path, sources):
+    project = tmp_path / "p"
+    project.mkdir()
+    (project / "AGENTS.md").write_text("# Shared\n\n## Memory bank\n\nProject memory rules.\n")
+    (project / "CLAUDE.md").write_text(
+        "@AGENTS.md\n\n## Agents and delegation\n\nCustom routing.\n\n### Briefs\n\nKeep these.\n\n"
+        "## Python code goes to `coder-python`\n\nCustom Python rule.\n\n## Claude only\n\nKeep locally.\n"
+    )
+    run(project, sources, "--tools", "claude,codex", "--with", "coder-python")
+    shared = (project / "AGENTS.md").read_text()
+    local = (project / "CLAUDE.md").read_text()
+    assert "Custom routing." in shared and "### Briefs\n\nKeep these." in shared
+    assert "Custom Python rule." in shared and "Project memory rules." in shared
+    assert "Custom routing." not in local and "Custom Python rule." not in local
+    assert "## Claude only\n\nKeep locally." in local and local.startswith("@AGENTS.md\n")
+    assert "## Claude only" not in shared
+    before = {p: p.read_bytes() for p in project.rglob("*") if p.is_file()}
+    run(project, sources, "--tools", "claude,codex", "--with", "coder-python")
+    assert {p: p.read_bytes() for p in project.rglob("*") if p.is_file()} == before
+
+
+@pytest.mark.parametrize("with_agents", [False, True])
+def test_given_legacy_rules_when_dry_run_then_migration_writes_nothing(tmp_path, sources, with_agents):
+    project = tmp_path / "p"
+    project.mkdir()
+    (project / "CLAUDE.md").write_text("# Rules\n\n## Agents and delegation\n\nMy routing.\n")
+    if with_agents:
+        (project / "AGENTS.md").write_text("# Shared\n")
+    before = {p: p.read_bytes() for p in project.rglob("*") if p.is_file()}
+    run(project, sources, "--tools", "claude,codex", "--dry-run")
+    assert {p: p.read_bytes() for p in project.rglob("*") if p.is_file()} == before
+
+
+def test_given_conflicting_shared_rules_then_both_copies_are_kept_and_warning_is_printed(tmp_path, sources, capsys):
+    project = tmp_path / "p"
+    project.mkdir()
+    (project / "AGENTS.md").write_text("## Agents and delegation\n\nShared version.\n")
+    (project / "CLAUDE.md").write_text("## Agents and delegation\n\nLocal version.\n")
+    run(project, sources, "--tools", "claude,codex")
+    assert "Shared version." in (project / "AGENTS.md").read_text()
+    assert "Local version." in (project / "CLAUDE.md").read_text()
+    assert "review the copies for conflicting rules" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("folder", [".claude/skills", ".cursor/skills", ".codex/skills"])
+@pytest.mark.parametrize("tools", ["codex", "claude,cursor,codex"])
+def test_given_customized_skill_when_adding_codex_then_project_copy_and_support_files_are_reused(tmp_path, sources, folder, tools):
+    # given: upstream has both a conflicting helper and a file missing from the project copy
+    shipped = sources / "sdd-feature-skill/skills/sdd-feature"
+    (shipped / "scripts").mkdir()
+    (shipped / "scripts/check.py").write_text("# Shipped helper\n")
+    (shipped / "templates").mkdir()
+    (shipped / "templates/SPEC.md").write_text("# Shipped spec template\n")
+    project = tmp_path / "p"
+    skill = project / folder / "sdd-feature"
+    (skill / "scripts").mkdir(parents=True)
+    (skill / "support/nested").mkdir(parents=True)
+    (skill / "SKILL.md").write_text("# Custom project SDD\n")
+    (skill / "scripts/check.py").write_text("# Custom helper\n")
+    (skill / "support/nested/notes.txt").write_text("Custom supporting notes\n")
+    original = {p: p.read_bytes() for p in project.rglob("*") if p.is_file()}
+
+    # when: a dry-run precedes the first installation
+    run(project, sources, "--tools", tools, "--dry-run")
+    assert {p: p.read_bytes() for p in project.rglob("*") if p.is_file()} == original
+    run(project, sources, "--tools", tools)
+
+    # then: custom files win, and missing shipped files arrive on the first run
+    installed = project / ".agents/skills/sdd-feature"
+    assert (installed / "SKILL.md").read_text() == "# Custom project SDD\n"
+    assert (installed / "scripts/check.py").read_text() == "# Custom helper\n"
+    assert (installed / "support/nested/notes.txt").read_text() == "Custom supporting notes\n"
+    assert (installed / "templates/SPEC.md").read_text() == "# Shipped spec template\n"
+    assert all(p.read_bytes() == data for p, data in original.items())
+    before = {p: p.read_bytes() for p in project.rglob("*") if p.is_file()}
+    run(project, sources, "--tools", tools)
+    assert {p: p.read_bytes() for p in project.rglob("*") if p.is_file()} == before
+
+
+def test_given_existing_codex_skill_then_other_tools_do_not_replace_it(tmp_path, sources):
+    project = tmp_path / "p"
+    for folder, text in ((".cursor/skills", "Cursor custom"), (".agents/skills", "Codex custom")):
+        skill = project / folder / "sdd-feature"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text(text)
+    run(project, sources, "--tools", "codex")
+    assert (project / ".agents/skills/sdd-feature/SKILL.md").read_text() == "Codex custom"
+
+
+@pytest.mark.parametrize("source", [".mcp.json", ".cursor/mcp.json"])
+def test_given_project_navigation_config_when_adding_codex_then_command_args_and_environment_are_reused(tmp_path, sources, source):
+    import tomllib
+    project = tmp_path / "p"
+    path = project / source
+    path.parent.mkdir(parents=True, exist_ok=True)
+    server = {"command": "custom-nav", "args": ["--custom"], "env": {"SOURCE_ROOT": "custom/src"}}
+    path.write_text(json.dumps({"mcpServers": {"codenav": server}}))
+    run(project, sources, "--tools", "codex", "--with", "coder-python")
+    config = tomllib.loads((project / ".codex/config.toml").read_text())
+    assert config["mcp_servers"]["codenav"] == server
+
+
+def test_given_existing_codex_server_then_cross_tool_settings_do_not_override_it(tmp_path, sources):
+    import tomllib
+    project = tmp_path / "p"
+    (project / ".codex").mkdir(parents=True)
+    (project / ".codex/config.toml").write_text('[mcp_servers.codenav]\ncommand = "codex-custom"\n')
+    (project / ".mcp.json").write_text(json.dumps({"mcpServers": {"codenav": {"command": "claude-custom"}}}))
+    run(project, sources, "--tools", "codex", "--with", "coder-python")
+    config = tomllib.loads((project / ".codex/config.toml").read_text())
+    assert config["mcp_servers"]["codenav"] == {"command": "codex-custom"}
+
+
+@pytest.mark.parametrize("name", ["coder-python", "coder-swift", "coder-typescript"])
+def test_given_language_coder_then_yaml_description_is_quoted_and_converted_descriptions_match(tmp_path, sources, name):
+    import tomllib
+    from agent_guild.specialists import SPECIALISTS
+    project = tmp_path / "p"
+    project.mkdir()
+    run(project, sources, "--tools", "claude,cursor,codex", "--with", name)
+    for folder in (".claude/agents", ".cursor/agents"):
+        text = (project / folder / f"{name}.md").read_text()
+        description = next(line.removeprefix("description: ") for line in text.splitlines() if line.startswith("description: "))
+        assert json.loads(description) == SPECIALISTS[name].description
+    codex = tomllib.loads((project / ".codex/agents" / f"{name}.toml").read_text())
+    assert codex["description"] == SPECIALISTS[name].description

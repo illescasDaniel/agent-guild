@@ -29,7 +29,7 @@ class Vendor:
 VENDORS = {
     "claude": Vendor("claude", ".claude/agents", ".claude/skills", ".md", ".mcp.json"),
     "cursor": Vendor("cursor", ".cursor/agents", ".cursor/skills", ".md", ".cursor/mcp.json"),
-    "codex": Vendor("codex", ".codex/agents", ".codex/skills", ".toml", ".codex/config.toml"),
+    "codex": Vendor("codex", ".codex/agents", ".agents/skills", ".toml", ".codex/config.toml"),
 }
 
 
@@ -67,7 +67,10 @@ def _split(source: str) -> tuple[dict[str, str], str]:
     fields = {}
     for line in frontmatter.splitlines():
         key, _, value = line.partition(":")
-        fields[key.strip()] = value.strip()
+        value = value.strip()
+        if value.startswith('"'):
+            value = json.loads(value)
+        fields[key.strip()] = value
     return fields, body
 
 
