@@ -2,8 +2,9 @@
 
 [![PyPI](https://img.shields.io/pypi/v/agent-guild)](https://pypi.org/project/agent-guild/)
 
-A ready-made **multi-agent setup for [Claude Code](https://claude.com/claude-code)**, installed into a project with one
-command. A Sonnet **orchestrator** delegates to specialist subagents (Opus architect and grader, Sonnet coders, Haiku
+A ready-made **multi-agent setup for [Claude Code](https://claude.com/claude-code), [Cursor](https://cursor.com) and
+[Codex](https://developers.openai.com/codex)**, installed into a project with one command. (The Sonnet/Opus/Haiku
+tiering below is Claude Code's; Cursor and Codex agents inherit the session model.) A Sonnet **orchestrator** delegates to specialist subagents (Opus architect and grader, Sonnet coders, Haiku
 utility), and three features come wired in:
 
 - **Multiple agents**: `architect`, `coder` (parallel-safe), `code-grader` and `utility`, plus the orchestrator rules
@@ -38,13 +39,15 @@ uvx agent-guild /path/to/project
 
 ## Files
 
-| File | Install to | Role |
+| File | Install to (Claude Code) | Role |
 |---|---|---|
 | [development-workflow.md](development-workflow.md) | imported from `~/.claude/CLAUDE.md` | Orchestrator rules: knowledge layers, routing, SDD phase → agent map, briefs, memory protocol |
 | [agents/architect.md](agents/architect.md) | `~/.claude/agents/` | Opus, read-only. Plans, SDD Phase 1 design decisions, Phase 2 interfaces, root causes |
 | [agents/coder.md](agents/coder.md) | `~/.claude/agents/` | Sonnet. Scoped implementation; parallel-safe |
 | [agents/code-grader.md](agents/code-grader.md) | `~/.claude/agents/` | Opus, read-only. SDD Phase 5. Body identical to the sdd-feature skill's grader; only the frontmatter differs |
 | [agents/utility.md](agents/utility.md) | `~/.claude/agents/` | Haiku. Checks, git, moves, bulk edits |
+
+These are the Claude Code sources; the installer converts them for Cursor and Codex.
 
 ## Install
 
