@@ -396,7 +396,10 @@ def test_given_symlinked_skills_dir_then_the_log_notes_where_skills_are_written(
     project = tmp_path / "p"
     (project / ".cursor/skills").mkdir(parents=True)
     (project / ".claude").mkdir()
-    (project / ".claude/skills").symlink_to("../.cursor/skills")
+    try:
+        (project / ".claude/skills").symlink_to("../.cursor/skills", target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are not available here")
     # when
     run(project, sources)
     # then
