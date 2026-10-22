@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+- Cursor and Codex support. The installer detects the tools a project uses (`.claude/` or `CLAUDE.md`, `.cursor/`,
+  `.codex/` or `.agents/`; Claude Code when none) and installs for each one, or for `--tools claude,cursor,codex`.
+  Agents are written in each tool's format (Cursor `readonly`, Codex TOML), skills go to `.cursor/skills/` and
+  `.agents/skills/`, and the jevmem and language-coder MCP servers to `.cursor/mcp.json` and `.codex/config.toml`.
+  Hooks, auto-memory and the model setting stay Claude Code only.
+- The rules sections now go to `AGENTS.md` (created if missing; `CLAUDE.md` only when it is the sole file). With Claude
+  Code, `CLAUDE.md` gets an `@AGENTS.md` import.
+
 ## [1.2.1] - 2026-10-22
 
 - The install log says `skipped ... section '<name>' is already in CLAUDE.md or AGENTS.md` instead of the confusing

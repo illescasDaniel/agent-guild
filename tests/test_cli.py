@@ -40,16 +40,17 @@ def test_given_empty_project_when_installed_then_everything_is_copied(tmp_path, 
     assert (project / ".claude/development-workflow.md").is_file()
     for skill in ("memory-bank", "jev-memory", "sdd-feature"):
         assert (project / ".claude/skills" / skill / "SKILL.md").is_file()
-    claude_md = (project / "CLAUDE.md").read_text()
-    assert "@.claude/development-workflow.md" in claude_md
-    assert "## Memory bank" in claude_md and "Phase Gate Protocol" in claude_md
+    assert (project / "CLAUDE.md").read_text() == "@AGENTS.md\n"
+    agents_md = (project / "AGENTS.md").read_text()
+    assert "@.claude/development-workflow.md" in agents_md
+    assert "## Memory bank" in agents_md and "Phase Gate Protocol" in agents_md
     settings = json.loads((project / ".claude/settings.json").read_text())
     assert settings["model"] == "sonnet" and settings["autoMemoryEnabled"] is False
     assert set(settings["hooks"]) == {"SessionStart", "UserPromptSubmit"}
     assert "jevmem" in json.loads((project / ".mcp.json").read_text())["mcpServers"]
 
 
-def test_given_agents_md_only_when_installed_then_claude_md_imports_it_and_holds_the_sections(tmp_path, sources):
+def test_given_agents_md_only_when_installed_then_it_holds_the_sections_and_claude_md_imports_it(tmp_path, sources):
     # given
     project = tmp_path / "p"
     project.mkdir()
@@ -57,9 +58,34 @@ def test_given_agents_md_only_when_installed_then_claude_md_imports_it_and_holds
     # when
     run(project, sources)
     # then
-    assert (project / "CLAUDE.md").read_text().startswith("@AGENTS.md\n")
+    assert (project / "CLAUDE.md").read_text() == "@AGENTS.md\n"
+    assert (project / "AGENTS.md").read_text().startswith("# Rules\n")
+    assert "## Agents and delegation" in (project / "AGENTS.md").read_text()
+
+
+def test_given_claude_md_only_when_installed_then_the_sections_go_there(tmp_path, sources):
+    # given
+    project = tmp_path / "p"
+    project.mkdir()
+    (project / "CLAUDE.md").write_text("# Mine\n")
+    # when
+    run(project, sources)
+    # then
+    assert not (project / "AGENTS.md").exists()
     assert "## Agents and delegation" in (project / "CLAUDE.md").read_text()
-    assert (project / "AGENTS.md").read_text() == "# Rules\n"
+
+
+def test_given_both_files_when_installed_then_agents_md_gets_the_sections_and_claude_md_keeps_its_text(tmp_path, sources):
+    # given
+    project = tmp_path / "p"
+    project.mkdir()
+    (project / "AGENTS.md").write_text("# Rules\n")
+    (project / "CLAUDE.md").write_text("# Claude only\n")
+    # when
+    run(project, sources)
+    # then
+    assert "## Agents and delegation" in (project / "AGENTS.md").read_text()
+    assert (project / "CLAUDE.md").read_text() == "@AGENTS.md\n\n# Claude only\n"
 
 
 def test_given_installed_project_when_run_again_then_nothing_changes(tmp_path, sources):
@@ -100,7 +126,7 @@ def test_given_without_sdd_and_jevmem_then_those_parts_are_left_out(tmp_path, so
     assert not (project / ".claude/skills/jev-memory").exists()
     assert not (project / ".mcp.json").exists()
     assert json.loads((project / ".claude/settings.json").read_text()) == {"model": "sonnet"}
-    assert "Phase Gate" not in (project / "CLAUDE.md").read_text()
+    assert "Phase Gate" not in (project / "AGENTS.md").read_text()
 
 
 def test_given_existing_settings_when_installed_then_they_are_merged_with_indent_kept(tmp_path, sources):
@@ -150,7 +176,7 @@ def test_given_model_none_then_model_is_not_set(tmp_path, sources):
     assert "model" not in json.loads((project / ".claude/settings.json").read_text())
 
 
-def test_given_sections_already_in_agents_md_then_claude_md_does_not_repeat_them(tmp_path, sources):
+def test_given_sections_already_in_agents_md_then_they_are_not_repeated(tmp_path, sources):
     # given
     project = tmp_path / "p"
     project.mkdir()
@@ -158,9 +184,9 @@ def test_given_sections_already_in_agents_md_then_claude_md_does_not_repeat_them
     # when
     run(project, sources)
     # then
-    text = (project / "CLAUDE.md").read_text()
+    text = (project / "AGENTS.md").read_text()
     assert "## Agents and delegation" in text
-    assert "## Memory bank" not in text and "Phase Gate" not in text
+    assert text.count("## Memory bank") == 1 and text.count("Phase Gate") == 1
 
 
 def test_given_cursor_skills_when_importing_then_copied_without_replacing_existing(tmp_path, sources):
@@ -171,7 +197,7 @@ def test_given_cursor_skills_when_importing_then_copied_without_replacing_existi
     (project / ".cursor/skills/sdd-feature").mkdir()
     (project / ".cursor/skills/sdd-feature/SKILL.md").write_text("cursor version")
     # when
-    run(project, sources, "--import-cursor-skills")
+    run(project, sources, "--tools", "claude,cursor", "--import-cursor-skills")
     # then
     assert (project / ".claude/skills/mine/SKILL.md").read_text() == "mine"
     assert (project / ".claude/skills/sdd-feature/SKILL.md").read_text() != "cursor version"
@@ -222,7 +248,7 @@ def test_given_no_with_flag_then_no_language_coder_or_navigation_server_is_insta
     # then
     assert sorted(p.name for p in (project / ".claude/agents").glob("coder-*.md")) == []
     assert set(json.loads((project / ".mcp.json").read_text())["mcpServers"]) == {"jevmem"}
-    assert "coder-python" not in (project / "CLAUDE.md").read_text()
+    assert "coder-python" not in (project / "AGENTS.md").read_text()
 
 
 @pytest.mark.parametrize("agent, server_key, tool", [
@@ -246,9 +272,9 @@ def test_given_with_coder_then_agent_server_and_routing_rule_are_installed(tmp_p
     assert "model: sonnet" in frontmatter
     assert "## Rules" in body and "navigation (" in body
     assert server_key in json.loads((project / ".mcp.json").read_text())["mcpServers"]
-    claude_md = (project / "CLAUDE.md").read_text()
-    assert f"`{agent}`" in claude_md
-    assert claude_md.index(f"`{agent}`") < claude_md.index("## Memory bank")
+    agents_md = (project / "AGENTS.md").read_text()
+    assert f"`{agent}`" in agents_md
+    assert agents_md.index(f"`{agent}`") < agents_md.index("## Memory bank")
 
 
 def test_given_with_coder_when_run_again_then_nothing_changes_and_rule_is_not_repeated(tmp_path, sources):
@@ -261,7 +287,7 @@ def test_given_with_coder_when_run_again_then_nothing_changes_and_rule_is_not_re
     run(project, sources, "--with", "coder-python", "--with", "coder-swift")
     # then
     assert {p: p.read_bytes() for p in project.rglob("*") if p.is_file()} == before
-    assert (project / "CLAUDE.md").read_text().count("## Python code goes to") == 1
+    assert (project / "AGENTS.md").read_text().count("## Python code goes to") == 1
 
 
 def test_given_existing_server_entry_when_with_coder_then_it_is_kept(tmp_path, sources):
@@ -388,7 +414,7 @@ def test_given_sections_already_in_agents_md_then_the_log_says_skipped_not_uncha
     run(project, sources)
     # then
     out = capsys.readouterr().out
-    assert "skipped    CLAUDE.md  section 'Phase Gate Protocol' is already in CLAUDE.md or AGENTS.md" in out
+    assert "skipped    AGENTS.md  section 'Phase Gate Protocol' is already in AGENTS.md or CLAUDE.md" in out
 
 
 def test_given_symlinked_skills_dir_then_the_log_notes_where_skills_are_written(tmp_path, sources, capsys):
@@ -405,3 +431,114 @@ def test_given_symlinked_skills_dir_then_the_log_notes_where_skills_are_written(
     # then
     assert "is a symlink to" in capsys.readouterr().out
     assert (project / ".cursor/skills/sdd-feature/SKILL.md").is_file()
+
+
+def _tree(project):
+    return sorted(p.relative_to(project).as_posix() for p in project.rglob("*") if p.is_file())
+
+
+def test_given_cursor_folder_when_installed_then_cursor_gets_its_own_format_and_no_claude_files(tmp_path, sources):
+    # given
+    project = tmp_path / "p"
+    (project / ".cursor").mkdir(parents=True)
+    # when
+    run(project, sources)
+    # then
+    files = _tree(project)
+    assert not any(f.startswith(".claude/") or f in ("CLAUDE.md", ".mcp.json") for f in files)
+    architect = (project / ".cursor/agents/architect.md").read_text()
+    assert 'readonly: true' in architect and "model: inherit" in architect
+    assert "disallowedTools" not in architect and "color:" not in architect and "effort:" not in architect
+    assert "readonly" not in (project / ".cursor/agents/coder.md").read_text()
+    for skill in ("memory-bank", "jev-memory", "sdd-feature"):
+        assert (project / ".cursor/skills" / skill / "SKILL.md").is_file()
+    assert (project / ".cursor/development-workflow.md").is_file()
+    assert "@.cursor/development-workflow.md" in (project / "AGENTS.md").read_text()
+    assert "jevmem" in json.loads((project / ".cursor/mcp.json").read_text())["mcpServers"]
+    assert "type" not in json.loads((project / ".cursor/mcp.json").read_text())["mcpServers"]["jevmem"]
+
+
+def test_given_codex_folder_when_installed_then_agents_are_toml_and_skills_go_to_agents_skills(tmp_path, sources, capsys):
+    # given
+    import tomllib
+    project = tmp_path / "p"
+    (project / ".codex").mkdir(parents=True)
+    # when
+    run(project, sources, "--with", "coder-python")
+    # then
+    for name in ("architect", "coder", "code-grader", "utility", "coder-python"):
+        agent = tomllib.loads((project / ".codex/agents" / f"{name}.toml").read_text())
+        assert agent["name"] == name and agent["description"] and agent["developer_instructions"].strip()
+    architect = tomllib.loads((project / ".codex/agents/architect.toml").read_text())
+    assert architect["model_reasoning_effort"] == "high"
+    assert architect["developer_instructions"].startswith("You are read-only")
+    assert not tomllib.loads((project / ".codex/agents/coder.toml").read_text())["developer_instructions"].startswith("You are read-only")
+    assert (project / ".agents/skills/sdd-feature/SKILL.md").is_file()
+    config = tomllib.loads((project / ".codex/config.toml").read_text())
+    assert config["mcp_servers"]["jevmem"]["command"] == "uvx"
+    assert config["mcp_servers"]["codenav"]["args"][0] == "--from"
+    assert not (project / ".claude").exists()
+    assert "jevmem's session hooks are only set up for Claude Code" in capsys.readouterr().out
+
+
+def test_given_several_tools_detected_then_all_of_them_are_installed_and_share_one_workflow_doc(tmp_path, sources, capsys):
+    # given
+    project = tmp_path / "p"
+    for folder in (".claude", ".cursor", ".codex"):
+        (project / folder).mkdir(parents=True)
+    # when
+    run(project, sources)
+    # then
+    files = _tree(project)
+    assert ".claude/agents/coder.md" in files and ".cursor/agents/coder.md" in files and ".codex/agents/coder.toml" in files
+    assert [f for f in files if f.endswith("development-workflow.md")] == [".claude/development-workflow.md"]
+    assert "tools: claude, cursor, codex (detected)" in capsys.readouterr().out
+    rules = (project / "AGENTS.md").read_text()
+    assert "`.claude/agents/`, `.cursor/agents/` and `.codex/agents/`" in rules
+
+
+def test_given_tools_flag_then_it_overrides_detection(tmp_path, sources):
+    # given
+    project = tmp_path / "p"
+    (project / ".cursor").mkdir(parents=True)
+    # when
+    run(project, sources, "--tools", "codex")
+    # then
+    assert (project / ".codex/agents/coder.toml").is_file()
+    assert not (project / ".cursor/agents").exists() and not (project / ".claude").exists()
+
+
+def test_given_unknown_tool_then_it_is_refused(tmp_path, sources):
+    # given
+    project = tmp_path / "p"
+    project.mkdir()
+    # when / then
+    with pytest.raises(SystemExit):
+        run(project, sources, "--tools", "emacs")
+
+
+def test_given_codex_config_with_other_settings_then_servers_are_appended_and_run_again_changes_nothing(tmp_path, sources):
+    # given
+    project = tmp_path / "p"
+    (project / ".codex").mkdir(parents=True)
+    (project / ".codex/config.toml").write_text('model = "x"\n\n[mcp_servers.jevmem]\ncommand = "mine"\n')
+    # when
+    run(project, sources, "--with", "coder-swift")
+    run(project, sources, "--with", "coder-swift")
+    # then
+    import tomllib
+    config = tomllib.loads((project / ".codex/config.toml").read_text())
+    assert config["model"] == "x" and config["mcp_servers"]["jevmem"]["command"] == "mine"
+    assert config["mcp_servers"]["codenav-swift"]["env"] == {"CODENAV_SWIFT_WRITE": "1"}
+    assert (project / ".codex/config.toml").read_text().count("[mcp_servers.codenav-swift]") == 1
+
+
+def test_given_claude_md_only_and_codex_then_a_warning_says_codex_will_not_read_it(tmp_path, sources, capsys):
+    # given
+    project = tmp_path / "p"
+    (project / ".codex").mkdir(parents=True)
+    (project / "CLAUDE.md").write_text("# Mine\n")
+    # when
+    run(project, sources)
+    # then
+    assert "only has a CLAUDE.md" in capsys.readouterr().out

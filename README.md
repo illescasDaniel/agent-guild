@@ -61,26 +61,37 @@ uvx agent-guild /path/to/project --dry-run
 uvx agent-guild /path/to/project
 ```
 
-It does, in the project:
+It does, in the project, for each coding tool it finds (see **Tools** below):
 
-- copies `agents/*.md` and `development-workflow.md` into `.claude/`;
-- copies the `memory-bank`, `jev-memory` and `sdd-feature` skills into `.claude/skills/` (cloned from GitHub, or from
-  local clones with `--sources-dir DIR`);
-- adds three removable sections to `CLAUDE.md`: *Agents and delegation*, *Memory bank* and *Phase Gate Protocol*. They
-  live in `CLAUDE.md`, not `AGENTS.md`, because they are rules for Claude Code and its subagents; `AGENTS.md` stays
-  tool-neutral. If the project has an `AGENTS.md`, `CLAUDE.md` starts with `@AGENTS.md`. A section that `CLAUDE.md` or
-  `AGENTS.md` already has is not added again;
-- adds the pinned jevmem server to `.mcp.json` and the jevmem hooks to `.claude/settings.json`, merging into existing
-  files;
-- sets `autoMemoryEnabled: false` and the project's model to `sonnet`.
+- copies the agents in that tool's format and folder (`.claude/agents/*.md`; `.cursor/agents/*.md` with `readonly`
+  instead of `disallowedTools`; `.codex/agents/*.toml`), and one shared `development-workflow.md` next to the first
+  tool's agents;
+- copies the `memory-bank`, `jev-memory` and `sdd-feature` skills into that tool's skills folder (`.claude/skills/`,
+  `.cursor/skills/`, `.agents/skills/` for Codex), cloned from GitHub, or from local clones with `--sources-dir DIR`;
+- adds three removable sections to `AGENTS.md`: *Agents and delegation*, *Memory bank* and *Phase Gate Protocol*. If the
+  project has only a `CLAUDE.md`, they go there instead; with neither, `AGENTS.md` is created. When Claude Code is one
+  of the tools, `CLAUDE.md` gets an `@AGENTS.md` import (Claude Code doesn't read `AGENTS.md`). A section that either
+  file already has is not added again;
+- adds the pinned jevmem server to the tool's MCP config (`.mcp.json`, `.cursor/mcp.json`, `.codex/config.toml`),
+  merging into existing files;
+- for Claude Code only: adds the jevmem hooks to `.claude/settings.json`, sets `autoMemoryEnabled: false` and the
+  project's model to `sonnet`.
+
+**Tools.** The installer detects what the project uses: `.claude/` or `CLAUDE.md` → Claude Code, `.cursor/` → Cursor,
+`.codex/` or `.agents/` → Codex; with several, it installs for all of them, and with none, for Claude Code. Override
+with `--tools claude,cursor,codex`. Cursor and Codex agents don't carry the Claude model tiering (Cursor gets
+`model: inherit`, Codex inherits the session model) and Codex has no read-only switch for an agent, so the read-only
+agents say it in their instructions. Cursor also reads `.claude/` and `.agents/` folders, so with several tools
+installed it may list a skill twice.
 
 | Flag | Effect |
 |---|---|
-| `--with coder-python` / `coder-swift` / `coder-typescript` | Add a language coder (repeatable): the generic coder, required to use that language's code-navigation MCP ([codenav-mcp](https://github.com/illescasDaniel/codenav-mcp), [codenav-swift-mcp](https://github.com/illescasDaniel/codenav-swift-mcp), [webnav-ts-mcp](https://github.com/illescasDaniel/webnav-ts-mcp)). Also adds the MCP server to `.mcp.json` (an existing entry is kept) and a `CLAUDE.md` rule that routes that language's work to it. The MCP's own prerequisites (uv, a Swift toolchain, Node) are printed after the install |
-| `--coders-only` | With `--with`: install only the language coders (agent, MCP server, `CLAUDE.md` rule) and nothing else. After a normal install, the tool detects Python, Swift and TypeScript/JS projects and prints this command for the coders you don't have yet |
+| `--tools claude,cursor,codex` | Install for these tools instead of the detected ones |
+| `--with coder-python` / `coder-swift` / `coder-typescript` | Add a language coder (repeatable): the generic coder, required to use that language's code-navigation MCP ([codenav-mcp](https://github.com/illescasDaniel/codenav-mcp), [codenav-swift-mcp](https://github.com/illescasDaniel/codenav-swift-mcp), [webnav-ts-mcp](https://github.com/illescasDaniel/webnav-ts-mcp)). Also adds the MCP server to `.mcp.json` (an existing entry is kept) and an `AGENTS.md` rule that routes that language's work to it. The MCP's own prerequisites (uv, a Swift toolchain, Node) are printed after the install |
+| `--coders-only` | With `--with`: install only the language coders (agent, MCP server, `AGENTS.md` rule) and nothing else. After a normal install, the tool detects Python, Swift and TypeScript/JS projects and prints this command for the coders you don't have yet |
 | `--without sdd` / `memory-bank` / `jevmem` | Leave a component out. `sdd` also drops `code-grader` and the gate section; `jevmem` drops its skill, server, hooks and the auto-memory switch |
 | `--model ALIAS` | Project main-session model; default `sonnet` (the per-project alternative to the global setting below), `none` leaves it unset |
-| `--import-cursor-skills` | Also copy the project's `.cursor/skills/*` into `.claude/skills/`; skills that already exist are kept |
+| `--import-cursor-skills` | Also copy the project's `.cursor/skills/*` into `.claude/skills/` (needs `claude` among the tools); skills that already exist are kept |
 | `--personal-settings` | Put `--model` and `autoMemoryEnabled` in the git-ignored `.claude/settings.local.json` |
 | `--import-auto-memory` | First import the project's existing auto-memory notes into jevmem |
 | `--keep-auto-memory` | Don't switch auto-memory off |
@@ -106,7 +117,7 @@ wheel bundles them.
 
 ## Adding it to a project that already has its own setup
 
-The installer never overwrites a file that differs from the shipped one (and skips CLAUDE.md sections that `AGENTS.md`
+The installer never overwrites a file that differs from the shipped one (and skips rules sections that `AGENTS.md`
 or `CLAUDE.md` already has), so it is safe to run on a project with its own agents, skills and rules. After it runs:
 
 - **Skipped files are yours.** Anything the log marks `skipped ... differs` keeps your version. If it is an older or
@@ -138,7 +149,7 @@ or `CLAUDE.md` already has), so it is safe to run on a project with its own agen
   navigation MCPs; in practice it still reached for `grep` and `sed`, because the MCP tools arrive deferred (name
   only) and the brief or its own habits point elsewhere. `coder-python`, `coder-swift` and `coder-typescript`
   (`--with`) are generated from `coder.md` plus a navigation section that names the MCP's tools, and list those tools
-  in `tools:` so they load up front. A `CLAUDE.md` rule routes that language's work to them. Without `--with`, nothing
+  in `tools:` so they load up front. An `AGENTS.md` rule routes that language's work to them. Without `--with`, nothing
   changes.
 - **The grader runs on Opus.** The code it grades was written by Sonnet coders, so a different, stronger model gives
   a more independent review.

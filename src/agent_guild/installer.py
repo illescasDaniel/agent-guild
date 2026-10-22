@@ -8,11 +8,13 @@ import re
 import shutil
 import subprocess
 import tempfile
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
 from .files import Ctx, copy_tree, read_json, write_bytes, write_json
 from .specialists import SPECIALISTS, render
+from .vendors import TOOLS, VENDORS, agent_filename, codex_server_block, convert_agent, cursor_server, workflow_path
 
 JEVMEM_SPEC = "jevmem>=0.4.0,<0.5"
 JEVMEM_SERVER = {"type": "stdio", "command": "uvx", "args": ["--from", JEVMEM_SPEC, "jevmem-mcp"]}
@@ -20,7 +22,6 @@ JEVMEM_HOOKS = {
     "SessionStart": ("jevmem hook session-start", 15),
     "UserPromptSubmit": ("jevmem hook user-prompt", 20),
 }
-WORKFLOW_IMPORT = "@.claude/development-workflow.md"
 
 # name -> (git url, skill folder inside the repo, name under .claude/skills/)
 SKILL_SOURCES = {
@@ -52,26 +53,36 @@ class Options:
     import_auto_memory: bool = False
     import_cursor_skills: bool = False
     git_exclude: bool = False
+    tools: frozenset[str] = frozenset({"claude"})
+
+    def selected(self) -> list[str]:
+        return [t for t in TOOLS if t in self.tools]
 
     def wants(self, component: str) -> bool:
         return component not in self.without
+
+
+def _write_agent(ctx: Ctx, opts: Options, name: str, claude_format: bytes) -> None:
+    for tool in opts.selected():
+        dest = ctx.project / VENDORS[tool].agents_dir / agent_filename(tool, name)
+        write_bytes(ctx, dest, convert_agent(tool, claude_format))
 
 
 def install_agents(ctx: Ctx, opts: Options) -> None:
     for agent in sorted((opts.assets / "agents").glob("*.md")):
         if agent.name == "code-grader.md" and not opts.wants("sdd"):
             continue
-        write_bytes(ctx, ctx.project / ".claude" / "agents" / agent.name, agent.read_bytes())
+        _write_agent(ctx, opts, agent.stem, agent.read_bytes())
     write_bytes(
         ctx,
-        ctx.project / ".claude" / "development-workflow.md",
+        ctx.project / workflow_path(opts.tools),
         (opts.assets / "development-workflow.md").read_bytes(),
     )
 
 
 def install_specialists(ctx: Ctx, opts: Options) -> None:
     for name in sorted(opts.with_coders):
-        write_bytes(ctx, ctx.project / ".claude" / "agents" / f"{name}.md", render(SPECIALISTS[name], opts.assets))
+        _write_agent(ctx, opts, name, render(SPECIALISTS[name], opts.assets))
 
 
 def _fetch(url: str, into: Path) -> Path:
@@ -85,9 +96,10 @@ def install_skills(ctx: Ctx, opts: Options) -> None:
     wanted = [c for c in COMPONENTS if opts.wants(c)]
     if not wanted:
         return
-    skills_dir = ctx.project / ".claude" / "skills"
-    if skills_dir.is_symlink():
-        ctx.log("note", skills_dir, f"is a symlink to {os.readlink(skills_dir)}: skills are written there")
+    skills_dirs = [ctx.project / VENDORS[t].skills_dir for t in opts.selected()]
+    for skills_dir in skills_dirs:
+        if skills_dir.is_symlink():
+            ctx.log("note", skills_dir, f"is a symlink to {os.readlink(skills_dir)}: skills are written there")
     with tempfile.TemporaryDirectory(prefix="agent-guild-") as tmp:
         for component in wanted:
             url, subpath, skill_name = SKILL_SOURCES[component]
@@ -96,24 +108,28 @@ def install_skills(ctx: Ctx, opts: Options) -> None:
                 if not repo.is_dir():
                     raise SystemExit(f"error: {repo} not found (expected a clone of {url})")
             elif ctx.dry_run:
-                ctx.log("would fetch", url, f"-> .claude/skills/{skill_name}")
+                ctx.log("would fetch", url, "-> " + ", ".join(f"{d.relative_to(ctx.project).as_posix()}/{skill_name}" for d in skills_dirs))
                 continue
             else:
                 repo = _fetch(url, Path(tmp) / REPO_DIRS[component])
             src = repo / subpath
             if not (src / "SKILL.md").is_file():
                 raise SystemExit(f"error: no SKILL.md in {src}")
-            copy_tree(ctx, src, ctx.project / ".claude" / "skills" / skill_name)
+            for skills_dir in skills_dirs:
+                copy_tree(ctx, src, skills_dir / skill_name)
 
 
 def _rule_sections(opts: Options) -> list[tuple[str, str]]:
-    """(heading that marks the section as present, body) for every CLAUDE.md section to add, in order."""
+    """(heading that marks the section as present, body) for every rules section to add, in order."""
     if opts.coders_only:
         return [(SPECIALISTS[n].agent, SPECIALISTS[n].rule_body) for n in sorted(opts.with_coders)]
     sections = []
     for heading, template, component in RULE_SECTIONS:
         if component is None or opts.wants(component):
             body = (opts.assets / "templates" / template).read_text(encoding="utf-8").strip()
+            names = [f"`{VENDORS[t].agents_dir}/`" for t in opts.selected()]
+            dirs = ", ".join(names[:-1]) + (" and " if len(names) > 1 else "") + names[-1]
+            body = body.replace("{{AGENTS_DIRS}}", dirs).replace("{{WORKFLOW}}", workflow_path(opts.tools))
             sections.append((heading, body))
         if heading == "Agents and delegation":
             sections += [(SPECIALISTS[n].agent, SPECIALISTS[n].rule_body) for n in sorted(opts.with_coders)]
@@ -121,32 +137,55 @@ def _rule_sections(opts: Options) -> list[tuple[str, str]]:
 
 
 def install_rules(ctx: Ctx, opts: Options) -> None:
-    """The new sections live in CLAUDE.md (Claude-only rules); AGENTS.md stays tool-neutral and is just imported."""
+    """Add the rules sections to AGENTS.md (read by Codex, Cursor and others); CLAUDE.md only when it is the sole file.
+
+    Claude Code does not read AGENTS.md, so when it is a selected tool CLAUDE.md gets an `@AGENTS.md` import.
+    """
     agents_md, claude_md = ctx.project / "AGENTS.md", ctx.project / "CLAUDE.md"
-    existed = claude_md.exists()
-    text = claude_md.read_text(encoding="utf-8") if existed else ""
-    known = text + (agents_md.read_text(encoding="utf-8") if agents_md.exists() else "")
+    target = claude_md if claude_md.exists() and not agents_md.exists() else agents_md
+    other = claude_md if target == agents_md else agents_md
+    existed = target.exists()
+    text = target.read_text(encoding="utf-8") if existed else ""
+    known = text + (other.read_text(encoding="utf-8") if other.exists() else "")
     added = []
-    if agents_md.exists() and "@AGENTS.md" not in text:
-        text = "@AGENTS.md\n" + (("\n" + text) if text.strip() else "")
-        added.append("@AGENTS.md import")
     for heading, body in _rule_sections(opts):
         if re.search(rf"^#+ .*{re.escape(heading)}", known, re.MULTILINE):
-            ctx.log("skipped", claude_md, f"section '{heading}' is already in CLAUDE.md or AGENTS.md")
+            ctx.log("skipped", target, f"section '{heading}' is already in AGENTS.md or CLAUDE.md")
             continue
         text = text.rstrip("\n") + ("\n\n" if text.strip() else "") + body + "\n"
         added.append(heading)
     if added:
         if not ctx.dry_run:
-            claude_md.write_text(text, encoding="utf-8")
+            target.write_text(text, encoding="utf-8")
         verb = "edited" if existed else "created"
-        (ctx.edited_existing.append(claude_md) if existed else ctx.track_new(claude_md))
-        ctx.log(f"would {verb[:-1]}" if ctx.dry_run else verb, claude_md, "+ " + ", ".join(added))
+        (ctx.edited_existing.append(target) if existed else ctx.track_new(target))
+        ctx.log(f"would {verb[:-1]}" if ctx.dry_run else verb, target, "+ " + ", ".join(added))
+    if target == agents_md and "claude" in opts.tools:
+        _import_agents_md(ctx, claude_md)
+    if target == claude_md and opts.tools - {"claude"}:
+        ctx.warn("this project only has a CLAUDE.md, which Codex and Cursor don't read: rename it to AGENTS.md "
+                 "(and keep a CLAUDE.md containing `@AGENTS.md`) so every tool gets the rules.")
+
+
+def _import_agents_md(ctx: Ctx, claude_md: Path) -> None:
+    existed = claude_md.exists()
+    text = claude_md.read_text(encoding="utf-8") if existed else ""
+    if "@AGENTS.md" in text:
+        return
+    text = "@AGENTS.md\n" + (("\n" + text) if text.strip() else "")
+    if not ctx.dry_run:
+        claude_md.write_text(text, encoding="utf-8")
+    (ctx.edited_existing.append(claude_md) if existed else ctx.track_new(claude_md))
+    verb = "edit" if existed else "create"
+    ctx.log(f"would {verb}" if ctx.dry_run else ("edited" if existed else "created"), claude_md, "+ @AGENTS.md import")
 
 
 def import_cursor_skills(ctx: Ctx, opts: Options) -> None:
     """Copy the project's Cursor skills (.cursor/skills/*) into .claude/skills/. Existing skills are never replaced."""
     if not opts.import_cursor_skills:
+        return
+    if "claude" not in opts.tools:
+        ctx.log("skipped", ".cursor/skills", "--import-cursor-skills copies into .claude/skills, and claude is not a selected tool")
         return
     src_root = ctx.project / ".cursor" / "skills"
     if not src_root.is_dir():
@@ -165,6 +204,12 @@ def _has_hook(groups: list, marker: str) -> bool:
 
 
 def install_settings(ctx: Ctx, opts: Options) -> None:
+    """Claude Code only: hooks, auto-memory switch and model are its settings."""
+    if "claude" not in opts.tools:
+        if opts.wants("jevmem"):
+            ctx.warn("jevmem's session hooks are only set up for Claude Code; in Cursor and Codex the agents call "
+                     "memory_recall themselves.")
+        return
     shared_path = ctx.project / ".claude" / "settings.json"
     personal_path = ctx.project / ".claude" / "settings.local.json"
     scalar_path = personal_path if opts.personal_settings else shared_path
@@ -211,16 +256,10 @@ def install_mcp(ctx: Ctx, opts: Options) -> None:
         servers_to_add[spec.server_key] = spec.server
     if not servers_to_add:
         return
-    path = ctx.project / ".mcp.json"
-    data, indent = read_json(path)
-    servers = data.setdefault("mcpServers", {})
-    changes = []
-    for key, server in servers_to_add.items():
-        if key not in servers:
-            servers[key] = server
-            changes.append(f"{key} server")
+    for tool in opts.selected():
+        _write_mcp(ctx, tool, servers_to_add)
     user_config = Path.home() / ".claude.json"
-    if user_config.exists():
+    if user_config.exists() and "claude" in opts.tools:
         try:
             registered = json.loads(user_config.read_text(encoding="utf-8")).get("mcpServers", {})
             for key in servers_to_add:
@@ -228,7 +267,41 @@ def install_mcp(ctx: Ctx, opts: Options) -> None:
                     ctx.warn(f"{key} is also registered at user scope; keep one registration so the server isn't listed twice.")
         except (json.JSONDecodeError, AttributeError):
             pass
+
+
+def _write_mcp(ctx: Ctx, tool: str, servers_to_add: dict) -> None:
+    path = ctx.project / VENDORS[tool].mcp_file
+    if tool == "codex":
+        _write_codex_mcp(ctx, path, servers_to_add)
+        return
+    data, indent = read_json(path)
+    servers = data.setdefault("mcpServers", {})
+    changes = []
+    for key, server in servers_to_add.items():
+        if key not in servers:
+            servers[key] = cursor_server(server) if tool == "cursor" else server
+            changes.append(f"{key} server")
     write_json(ctx, path, data, indent, changes)
+
+
+def _write_codex_mcp(ctx: Ctx, path: Path, servers_to_add: dict) -> None:
+    """Append [mcp_servers.<key>] tables to .codex/config.toml; existing entries and the rest of the file are kept."""
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    try:
+        registered = tomllib.loads(text).get("mcp_servers", {})
+    except tomllib.TOMLDecodeError as exc:
+        raise SystemExit(f"error: {path} is not valid TOML ({exc}); fix it or move it away and re-run")
+    blocks = [codex_server_block(k, v) for k, v in servers_to_add.items() if k not in registered]
+    if not blocks:
+        ctx.log("unchanged", path)
+        return
+    existed = path.exists()
+    if not ctx.dry_run:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text.rstrip("\n") + ("\n\n" if text.strip() else "") + "\n".join(blocks), encoding="utf-8")
+    (ctx.edited_existing.append(path) if existed else ctx.track_new(path))
+    changes = "+ " + ", ".join(f"{k} server" for k in servers_to_add if k not in registered)
+    ctx.log(f"would {'edit' if existed else 'create'}" if ctx.dry_run else ("edited" if existed else "created"), path, changes)
 
 
 def encoded_memory_dir(project: Path) -> Path:
