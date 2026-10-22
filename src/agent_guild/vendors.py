@@ -63,7 +63,7 @@ def workflow_path(tools: list[str] | frozenset[str]) -> str:
 
 
 def _split(source: str) -> tuple[dict[str, str], str]:
-    _, frontmatter, body = source.split("---\n", 2)
+    _, frontmatter, body = source.replace("\r\n", "\n").split("---\n", 2)
     fields = {}
     for line in frontmatter.splitlines():
         key, _, value = line.partition(":")

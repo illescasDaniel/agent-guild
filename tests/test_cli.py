@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from agent_guild.cli import main
+from agent_guild.vendors import convert_agent
 
 REPOS = {"memory-bank": "skills/memory-bank", "jev-mem": ".claude/skills/jev-memory",
          "sdd-feature-skill": "skills/sdd-feature"}
@@ -543,3 +544,10 @@ def test_given_claude_md_only_and_codex_then_a_warning_says_codex_will_not_read_
     run(project, sources)
     # then
     assert "only has a CLAUDE.md" in capsys.readouterr().out
+
+
+def test_given_crlf_agent_source_when_converting_then_same_result_as_lf():
+    # Windows checkouts may turn the shipped agent files into CRLF
+    lf = b'---\nname: x\ndescription: d\ndisallowedTools: Edit, Write\n---\nBody\n'
+    for tool in ("cursor", "codex"):
+        assert convert_agent(tool, lf.replace(b"\n", b"\r\n")) == convert_agent(tool, lf)
