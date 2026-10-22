@@ -24,7 +24,8 @@ uvx agent-guild /path/to/project
 
 Or let your coding agent do it. Paste this prompt into Claude Code, Cursor or Codex, opened in the project:
 
-> Install agent-guild in this project. First read the project's existing instructions, agents, skills, MCP config and
+> Install agent-guild in this project. It is a PyPI package (`agent-guild`), normally run with `uvx` (or
+> `pipx`/`pip` if `uv` isn't available). First read the project's existing instructions, agents, skills, MCP config and
 > settings (`AGENTS.md`, `CLAUDE.md`, `.claude/`, `.cursor/`, `.codex/`, `.agents/`). Run
 > `uvx agent-guild . --dry-run` and review the plan with me: which tools to target, which optional parts to include
 > (`--with` language coders, `--without sdd`/`memory-bank`/`jevmem`, `--claude-compat`, `--model`), and anything that
