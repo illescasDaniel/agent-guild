@@ -15,7 +15,8 @@ utility), and three features come wired in:
   - [jev-mem](https://github.com/illescasDaniel/jev-mem): *long-term facts*, recalled by relevance through an MCP
     server and session hooks.
 - **Spec-Driven Development (SDD)**, via [sdd-feature](https://github.com/illescasDaniel/sdd-feature-skill): specs,
-  design, interfaces, implementation and grading, with approval gates between phases. Opt-in per project.
+  design, interfaces, implementation and grading, with approval gates between phases. Included by default; omit it
+  with `--without sdd`.
 
 ```bash
 uvx agent-guild /path/to/project
@@ -41,7 +42,7 @@ uvx agent-guild /path/to/project
 
 | File | Install to (Claude Code) | Role |
 |---|---|---|
-| [development-workflow.md](development-workflow.md) | imported from `~/.claude/CLAUDE.md` | Orchestrator rules: knowledge layers, routing, SDD phase → agent map, briefs, memory protocol |
+| [development-workflow.md](development-workflow.md) | `.agents/development-workflow.md` | Orchestrator rules: knowledge layers, routing, SDD phase → agent map, briefs, memory protocol |
 | [agents/architect.md](agents/architect.md) | `~/.claude/agents/` | Opus, read-only. Plans, SDD Phase 1 design decisions, Phase 2 interfaces, root causes |
 | [agents/coder.md](agents/coder.md) | `~/.claude/agents/` | Sonnet. Scoped implementation; parallel-safe |
 | [agents/code-grader.md](agents/code-grader.md) | `~/.claude/agents/` | Opus, read-only. SDD Phase 5. Body identical to the sdd-feature skill's grader; only the frontmatter differs |
@@ -54,7 +55,10 @@ These are the Claude Code sources; the installer converts them for Cursor and Co
 ### Quick: the installer (per project)
 
 `agent-guild` copies everything into a project (plain copies, not links, so the project can edit them) and is
-safe to re-run: files that differ from the shipped version are skipped unless you pass `--force`.
+safe to re-run: existing files that differ from the selected source are skipped unless you pass `--force`.
+It resolves and validates all sources and configuration in an in-memory plan before writing project files.
+`--dry-run` builds the same plan (including downloads into a temporary directory), without writing to the project.
+Preflight failures leave the project unchanged; filesystem errors during the final writes can still leave a partial install.
 
 ```bash
 uvx agent-guild /path/to/project --dry-run
@@ -67,24 +71,27 @@ uvx agent-guild /path/to/project
 It does, in the project, for each coding tool it finds (see **Tools** below):
 
 - copies the agents in that tool's format and folder (`.claude/agents/*.md`; `.cursor/agents/*.md` with `readonly`
-  instead of `disallowedTools`; `.codex/agents/*.toml`), and one shared `development-workflow.md` next to the first
-  tool's agents;
+  instead of `disallowedTools`; `.codex/agents/*.toml`), and one shared
+  `.agents/development-workflow.md`, explicitly read by Claude Code, Cursor and Codex;
 - copies the `memory-bank`, `jev-memory` and `sdd-feature` skills into that tool's skills folder (`.claude/skills/`,
   `.cursor/skills/`, `.agents/skills/` for Codex), cloned from GitHub, or from local clones with `--sources-dir DIR`;
-- adds three removable sections to `AGENTS.md`: *Agents and delegation*, *Memory bank* and *Phase Gate Protocol*. If the
-  project has only a `CLAUDE.md` and only Claude Code is selected, they go there instead. Adding Cursor or Codex
-  migrates existing shared rules into `AGENTS.md`, preserving custom section content and leaving a `CLAUDE.md`
-  import for Claude Code. If both files exist, only the selected shared sections move; other Claude-only sections
-  stay there. Conflicting duplicate sections are kept with a warning. With neither file, `AGENTS.md` is created.
-  Claude Code gets an `@AGENTS.md` import because it does not read `AGENTS.md` directly;
+- adds three removable sections: *Agents and delegation*, *Memory bank* and *Phase Gate Protocol*. If `AGENTS.md`
+  exists, that is the target. If only `CLAUDE.md` exists and only Claude Code is selected, it is the target instead.
+  Otherwise, creates `AGENTS.md`. Existing sections in the target are preserved; conflicts with sections in the
+  other instruction file produce warnings. **No developer rules are moved, deleted or migrated between files.**
+  Modern Claude Code (v2.1.277+, with built-in AGENTS support enabled) can read `AGENTS.md` directly when no
+  project/local `CLAUDE.md` takes precedence. Use `--claude-compat` to add an `@AGENTS.md` import for older versions
+  or sessions that prefer `CLAUDE.md`; meaningful existing Claude content is retained. With both files present,
+  the installer warns if Claude may not load the new shared instructions. See [Claude's instruction loading docs](https://code.claude.com/docs/en/memory#agentsmd);
 - adds the pinned jevmem server to the tool's MCP config (`.mcp.json`, `.cursor/mcp.json`, `.codex/config.toml`),
   merging into existing files. New Codex servers reuse matching project entries from `.mcp.json`, then
   `.cursor/mcp.json`, before falling back to defaults; existing Codex entries always win;
-- for Claude Code only: adds the jevmem hooks to `.claude/settings.json`, sets `autoMemoryEnabled: false` and the
-  project's model to `sonnet`.
+- for Claude Code only: adds the jevmem hooks to `.claude/settings.json`. It preserves existing project/local model
+  and auto-memory preferences; only absent preferences default to `sonnet` and `autoMemoryEnabled: false`.
+  `--model` and `--disable-auto-memory` explicitly override the corresponding destination settings.
 
 **Tools.** The installer detects what the project uses: `.claude/` or `CLAUDE.md` → Claude Code, `.cursor/` → Cursor,
-`.codex/` or `.agents/` → Codex; with several, it installs for all of them, and with none, for Claude Code. Override
+`.codex/` or `.agents/skills/` → Codex; with several, it installs for all of them, and with none, for Claude Code. Override
 with `--tools claude,cursor,codex`. Cursor and Codex agents don't carry the Claude model tiering (Cursor gets
 `model: inherit`, Codex inherits the session model) and Codex has no read-only switch for an agent, so the read-only
 agents say it in their instructions. Cursor also reads `.claude/` and `.agents/` folders, so with several tools
@@ -96,12 +103,14 @@ installed it may list a skill twice.
 | `--with coder-python` / `coder-swift` / `coder-typescript` | Add a language coder (repeatable): the generic coder, required to use that language's code-navigation MCP ([codenav-mcp](https://github.com/illescasDaniel/codenav-mcp), [codenav-swift-mcp](https://github.com/illescasDaniel/codenav-swift-mcp), [webnav-ts-mcp](https://github.com/illescasDaniel/webnav-ts-mcp)). Also adds the MCP server to `.mcp.json` (an existing entry is kept) and an `AGENTS.md` rule that routes that language's work to it. The MCP's own prerequisites (uv, a Swift toolchain, Node) are printed after the install |
 | `--coders-only` | With `--with`: install only the language coders (agent, MCP server, `AGENTS.md` rule) and nothing else. After a normal install, the tool detects Python, Swift and TypeScript/JS projects and prints this command for the coders you don't have yet |
 | `--without sdd` / `memory-bank` / `jevmem` | Leave a component out. `sdd` also drops `code-grader` and the gate section; `jevmem` drops its skill, server, hooks and the auto-memory switch |
-| `--model ALIAS` | Project main-session model; default `sonnet` (the per-project alternative to the global setting below), `none` leaves it unset |
+| `--model ALIAS` | Explicitly set the Claude project model. When omitted, preserve project/local preferences and default to `sonnet` only if absent; `none` does not set a model |
+| `--claude-compat` | Add a `CLAUDE.md` import of `AGENTS.md` for older Claude Code or sessions that prefer Claude instruction files. Off by default |
+| `--disable-auto-memory` | Explicitly set `autoMemoryEnabled: false`; otherwise preserve an existing project/local preference |
 | `--import-cursor-skills` | Also copy the project's `.cursor/skills/*` into `.claude/skills/` (needs `claude` among the tools); skills that already exist are kept |
 | `--personal-settings` | Put `--model` and `autoMemoryEnabled` in the git-ignored `.claude/settings.local.json` |
 | `--import-auto-memory` | First import the project's existing auto-memory notes into jevmem |
 | `--keep-auto-memory` | Don't switch auto-memory off |
-| `--sources-dir DIR` | Use local clones named `memory-bank/`, `jev-mem/`, `sdd-feature-skill/` instead of GitHub |
+| `--sources-dir DIR` | Use local clones named `memory-bank/`, `jev-mem/`, `sdd-feature-skill/` instead of the pinned upstream revisions; this is an explicit reproducibility override |
 | `--git-exclude` | List the files this run *creates* in `.git/info/exclude` (local to your clone, never committed), so you can try the setup without it showing in `git status`. Off by default: files are added normally and your git settings apply. Edits to files git already tracks (e.g. an existing `.mcp.json`) can't be hidden; the tool warns about them |
 | `--force`, `--dry-run` | Overwrite edited copies; show the plan without writing |
 
@@ -129,11 +138,15 @@ or `CLAUDE.md` already has), so it is safe to run on a project with its own agen
 - **Skipped files are yours.** Anything the log marks `skipped ... differs` keeps your version. If it is an older or
   customised copy of a shipped one (the `sdd-feature` skill, `code-grader`, `jev-memory`), diff it against the shipped
   file and merge what you want by hand. `--force` replaces it instead.
-- **Adding Codex reuses project skills.** For a missing `.agents/skills/<name>`, an existing copy from
-  `.claude/skills`, `.cursor/skills` or the legacy `.codex/skills` is copied in that order, including supporting files.
-  Existing `.agents/skills` copies remain protected. This is a plain copy; later edits are not synchronized. Review
-  the selected source in the install log if your tools have intentionally different skill versions. Codex's supported
-  repository discovery path is [`.agents/skills`](https://learn.chatgpt.com/docs/build-skills).
+- **All tools reuse project sources.** For agents, choose the first existing copy in Claude, Cursor, Codex order;
+  convert it for missing tool copies. Language coders inherit the project's generic coder body. For skills, choose
+  `.claude/skills`, `.cursor/skills`, `.agents/skills`, then legacy `.codex/skills`, and use that source for every
+  tool. Full supporting trees are copied. Existing divergent copies stay protected and produce drift warnings.
+  The selected source is printed, including in dry-runs. These are plain copies; later edits are not synchronized.
+  `--force` deliberately uses shipped sources instead. Codex discovers project skills under `.agents/skills`.
+- **Upstream skills are pinned.** Each release selects exact Git commits in `SKILL_REVISIONS`; fetching verifies
+  the resolved commit. `.agents/skill-sources.json` records the upstream URLs, revisions and content hashes.
+  `--sources-dir` records `local` plus content hashes instead, so local edits are visible in provenance.
 - **New files can land next to yours.** A skill folder you already have keeps its `SKILL.md`, but the shipped files
   that are missing (templates, scripts) are added beside it. If `.claude/skills` is a symlink to `.cursor/skills`, the
   log says so, and the skills are written there.
@@ -164,9 +177,9 @@ or `CLAUDE.md` already has), so it is safe to run on a project with its own agen
   changes.
 - **The grader runs on Opus.** The code it grades was written by Sonnet coders, so a different, stronger model gives
   a more independent review.
-- **SDD is opt-in.** The global workflow uses SDD only when a project's `AGENTS.md` / `CLAUDE.md` adopts the Phase Gate
-  Protocol, or when you ask for the `sdd-feature` skill directly. Projects that don't want gates just leave the rule
-  out.
+- **SDD is included by default.** A standard installation adds its skill, grader and Phase Gate Protocol.
+  Pass `--without sdd` to omit those additions. Existing developer-owned files and rules are not removed by this
+  flag. The workflow activates SDD when the project adopts the protocol or explicitly invokes the skill.
 - **Gates and gate status.** SDD gates stay between the orchestrator and the user. The gate status is recorded in
   `memory/activeContext.md`, so a new session resumes at the right gate.
 

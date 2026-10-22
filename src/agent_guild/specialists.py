@@ -13,6 +13,10 @@ import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
+
+from .vendors import _split
+
 
 @dataclass(frozen=True)
 class Specialist:
@@ -118,25 +122,20 @@ _JEVMEM_READ = ("mcp__jevmem__memory_recall",)
 _BUILTIN_TOOLS = ("Read", "Edit", "Write", "Glob", "Grep", "Bash")
 
 
-def render(spec: Specialist, assets: Path) -> bytes:
+def render(spec: Specialist, assets: Path, source: bytes | None = None) -> bytes:
     """Build the specialist's agent file from the generic coder and the language fragment."""
-    source = (assets / "agents" / "coder.md").read_text(encoding="utf-8")
-    _, frontmatter, body = source.split("---\n", 2)
+    source_text = source.decode("utf-8") if source is not None else (assets / "agents" / "coder.md").read_text(encoding="utf-8")
+    fields, body = _split(source_text)
     tools = ", ".join((*_BUILTIN_TOOLS, *_JEVMEM_READ, *(f"mcp__{spec.server_key}__{t}" for t in spec.tools)))
-    lines = []
-    for line in frontmatter.splitlines():
-        if line.startswith("name:"):
-            line = f"name: {spec.agent}"
-        elif line.startswith("description:"):
-            line = f"description: {json.dumps(spec.description, ensure_ascii=False)}"
-        elif line.startswith("disallowedTools:"):
-            line = f"tools: {tools}"  # an allowlist replaces the denylist: the codenav tools load up front
-        lines.append(line)
+    fields = {k: v for k, v in fields.items() if k not in ("name", "description", "disallowedTools")}
+    fields["tools"] = tools
+    head = f"name: {spec.agent}\ndescription: {json.dumps(spec.description, ensure_ascii=False)}\n"
+    head += yaml.safe_dump(fields, sort_keys=False, allow_unicode=True, width=120)
     section = (assets / "templates" / "coders" / spec.fragment).read_text(encoding="utf-8").strip()
     body, count = re.subn(r"\n## Rules", f"\n{section}\n\n## Rules", body, count=1)
     if count != 1:
         raise SystemExit("error: agents/coder.md has no '## Rules' heading to put the navigation section before")
-    return ("---\n" + "\n".join(lines) + "\n---\n" + body).encode("utf-8")
+    return ("---\n" + head + "---\n" + body).encode("utf-8")
 
 
 _SKIP_DIRS = {"node_modules", "venv", "build", "dist", "Pods", "__pycache__", "site-packages"}

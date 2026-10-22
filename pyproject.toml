@@ -16,7 +16,7 @@ classifiers = [
   "Topic :: Software Development",
 ]
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["PyYAML>=6.0.3,<7"]
 
 [project.urls]
 Homepage = "https://github.com/illescasDaniel/agent-guild"

@@ -51,7 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("project", type=Path, help="path to the project's root")
     p.add_argument("--tools", metavar="LIST",
                    help=f"comma-separated tools to install for: {', '.join(TOOLS)}. Default: the ones the project already "
-                        "uses (.claude/ or CLAUDE.md, .cursor/, .codex/ or .agents/), or claude when none is found. Each gets "
+                        "uses (.claude/ or CLAUDE.md, .cursor/, .codex/ or .agents/skills/), or claude when none is found. Each gets "
                         "agents and skills in its own format and folder, and an MCP config")
     p.add_argument("--without", action="append", default=[], choices=COMPONENTS, metavar="COMPONENT",
                    help=f"leave a component out (repeatable): {', '.join(COMPONENTS)}. "
@@ -64,11 +64,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--coders-only", action="store_true",
                    help="with --with: install only the language coders (agent, MCP server, routing rule) and leave "
                         "everything else in the project untouched")
-    p.add_argument("--model", default="sonnet", metavar="ALIAS",
-                   help="the project's main-session model (default: sonnet; 'none' leaves it unset)")
+    p.add_argument("--model", metavar="ALIAS",
+                   help="explicitly set the Claude model; otherwise preserve existing settings, defaulting to sonnet "
+                        "only when absent; 'none' leaves it unset")
+    p.add_argument("--claude-compat", action="store_true",
+                   help="add a CLAUDE.md @AGENTS.md import for older Claude Code or sessions preferring CLAUDE.md")
     p.add_argument("--personal-settings", action="store_true",
                    help="write --model and autoMemoryEnabled to .claude/settings.local.json instead of the committed settings.json")
-    p.add_argument("--keep-auto-memory", action="store_true", help="don't set autoMemoryEnabled=false")
+    memory = p.add_mutually_exclusive_group()
+    memory.add_argument("--keep-auto-memory", action="store_true", help="don't set autoMemoryEnabled=false")
+    memory.add_argument("--disable-auto-memory", action="store_true",
+                        help="explicitly set autoMemoryEnabled=false; otherwise preserve an existing preference")
     p.add_argument("--import-auto-memory", action="store_true",
                    help="first import the project's existing Claude auto-memory notes into jevmem (needs jevmem configured)")
     p.add_argument("--import-cursor-skills", action="store_true",
@@ -102,7 +108,10 @@ def main(argv: list[str] | None = None) -> int:
         without=frozenset(args.without),
         with_coders=frozenset(args.with_coders),
         coders_only=args.coders_only,
-        model=None if args.model.lower() == "none" else args.model,
+        model=None if args.model is None or args.model.lower() == "none" else args.model,
+        set_default_model=args.model is None,
+        claude_compat=args.claude_compat,
+        disable_auto_memory=args.disable_auto_memory,
         keep_auto_memory=args.keep_auto_memory,
         personal_settings=args.personal_settings,
         import_auto_memory=args.import_auto_memory,

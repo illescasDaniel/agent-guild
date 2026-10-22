@@ -38,12 +38,12 @@ def test_given_empty_project_when_installed_then_everything_is_copied(tmp_path, 
     # then
     for name in ("architect", "coder", "code-grader", "utility"):
         assert (project / ".claude/agents" / f"{name}.md").is_file()
-    assert (project / ".claude/development-workflow.md").is_file()
+    assert (project / ".agents/development-workflow.md").is_file()
     for skill in ("memory-bank", "jev-memory", "sdd-feature"):
         assert (project / ".claude/skills" / skill / "SKILL.md").is_file()
-    assert (project / "CLAUDE.md").read_text() == "@AGENTS.md\n"
+    assert not (project / "CLAUDE.md").exists()
     agents_md = (project / "AGENTS.md").read_text()
-    assert "Read `.claude/development-workflow.md`." in agents_md
+    assert "Read `.agents/development-workflow.md`." in agents_md
     assert "## Memory bank" in agents_md and "Phase Gate Protocol" in agents_md
     settings = json.loads((project / ".claude/settings.json").read_text())
     assert settings["model"] == "sonnet" and settings["autoMemoryEnabled"] is False
@@ -59,7 +59,7 @@ def test_given_agents_md_only_when_installed_then_it_holds_the_sections_and_clau
     # when
     run(project, sources)
     # then
-    assert (project / "CLAUDE.md").read_text() == "@AGENTS.md\n"
+    assert not (project / "CLAUDE.md").exists()
     assert (project / "AGENTS.md").read_text().startswith("# Rules\n")
     assert "## Agents and delegation" in (project / "AGENTS.md").read_text()
 
@@ -86,7 +86,7 @@ def test_given_both_files_when_installed_then_agents_md_gets_the_sections_and_cl
     run(project, sources)
     # then
     assert "## Agents and delegation" in (project / "AGENTS.md").read_text()
-    assert (project / "CLAUDE.md").read_text() == "@AGENTS.md\n\n# Claude only\n"
+    assert (project / "CLAUDE.md").read_text() == "# Claude only\n"
 
 
 def test_given_installed_project_when_run_again_then_nothing_changes(tmp_path, sources):
@@ -201,7 +201,7 @@ def test_given_cursor_skills_when_importing_then_copied_without_replacing_existi
     run(project, sources, "--tools", "claude,cursor", "--import-cursor-skills")
     # then
     assert (project / ".claude/skills/mine/SKILL.md").read_text() == "mine"
-    assert (project / ".claude/skills/sdd-feature/SKILL.md").read_text() != "cursor version"
+    assert (project / ".claude/skills/sdd-feature/SKILL.md").read_text() == "cursor version"
 
 
 def _git(project, *args):
@@ -224,7 +224,7 @@ def test_given_git_exclude_then_new_files_are_hidden_but_tracked_edits_are_warne
     assert ".mcp.json" in status
     assert ".mcp.json is tracked by git" in capsys.readouterr().out
     exclude = (project / ".git/info/exclude").read_text()
-    assert "/.claude/" in exclude and "/CLAUDE.md" in exclude and exclude.count("# agent-guild") == 1
+    assert "/.claude/" in exclude and "/AGENTS.md" in exclude and "/.agents/" in exclude and exclude.count("# agent-guild") == 1
 
 
 def test_given_no_git_exclude_flag_then_git_exclude_is_untouched(tmp_path, sources):
@@ -403,7 +403,7 @@ def test_given_edited_agent_when_run_again_then_the_merge_hint_is_printed(tmp_pa
     # when
     run(project, sources)
     # then
-    assert "merge the changes by hand" in capsys.readouterr().out
+    assert "project agent coder" in capsys.readouterr().out
 
 
 def test_given_sections_already_in_agents_md_then_the_log_says_skipped_not_unchanged(tmp_path, sources, capsys):
@@ -415,7 +415,7 @@ def test_given_sections_already_in_agents_md_then_the_log_says_skipped_not_uncha
     run(project, sources)
     # then
     out = capsys.readouterr().out
-    assert "skipped    AGENTS.md  section 'Phase Gate Protocol' is already in AGENTS.md or CLAUDE.md" in out
+    assert "skipped    AGENTS.md  section 'Phase Gate Protocol' is already in AGENTS.md" in out
 
 
 def test_given_symlinked_skills_dir_then_the_log_notes_where_skills_are_written(tmp_path, sources, capsys):
@@ -453,8 +453,8 @@ def test_given_cursor_folder_when_installed_then_cursor_gets_its_own_format_and_
     assert "readonly" not in (project / ".cursor/agents/coder.md").read_text()
     for skill in ("memory-bank", "jev-memory", "sdd-feature"):
         assert (project / ".cursor/skills" / skill / "SKILL.md").is_file()
-    assert (project / ".cursor/development-workflow.md").is_file()
-    assert "Read `.cursor/development-workflow.md`." in (project / "AGENTS.md").read_text()
+    assert (project / ".agents/development-workflow.md").is_file()
+    assert "Read `.agents/development-workflow.md`." in (project / "AGENTS.md").read_text()
     assert "jevmem" in json.loads((project / ".cursor/mcp.json").read_text())["mcpServers"]
     assert "type" not in json.loads((project / ".cursor/mcp.json").read_text())["mcpServers"]["jevmem"]
 
@@ -493,7 +493,7 @@ def test_given_several_tools_detected_then_all_of_them_are_installed_and_share_o
     # then
     files = _tree(project)
     assert ".claude/agents/coder.md" in files and ".cursor/agents/coder.md" in files and ".codex/agents/coder.toml" in files
-    assert [f for f in files if f.endswith("development-workflow.md")] == [".claude/development-workflow.md"]
+    assert [f for f in files if f.endswith("development-workflow.md")] == [".agents/development-workflow.md"]
     assert "tools: claude, cursor, codex (detected)" in capsys.readouterr().out
     rules = (project / "AGENTS.md").read_text()
     assert "`.claude/agents/`, `.cursor/agents/` and `.codex/agents/`" in rules
@@ -535,7 +535,7 @@ def test_given_codex_config_with_other_settings_then_servers_are_appended_and_ru
     assert (project / ".codex/config.toml").read_text().count("[mcp_servers.codenav-swift]") == 1
 
 
-def test_given_claude_md_only_and_codex_then_rules_migrate_to_agents_md(tmp_path, sources, capsys):
+def test_given_claude_md_only_and_codex_then_developer_rules_are_not_migrated(tmp_path, sources, capsys):
     # given
     project = tmp_path / "p"
     (project / ".codex").mkdir(parents=True)
@@ -543,8 +543,8 @@ def test_given_claude_md_only_and_codex_then_rules_migrate_to_agents_md(tmp_path
     # when
     run(project, sources)
     # then
-    assert (project / "AGENTS.md").read_text().startswith("# Mine\n")
-    assert (project / "CLAUDE.md").read_text() == "@AGENTS.md\n"
+    assert "# Mine" not in (project / "AGENTS.md").read_text()
+    assert (project / "CLAUDE.md").read_text() == "# Mine\n"
 
 
 def test_given_crlf_agent_source_when_converting_then_same_result_as_lf():
@@ -554,7 +554,7 @@ def test_given_crlf_agent_source_when_converting_then_same_result_as_lf():
         assert convert_agent(tool, lf.replace(b"\n", b"\r\n")) == convert_agent(tool, lf)
 
 
-def test_given_rules_only_in_claude_when_adding_codex_then_custom_sections_move_without_losing_other_rules(tmp_path, sources):
+def test_given_rules_only_in_claude_when_adding_codex_then_custom_sections_stay_in_claude(tmp_path, sources):
     project = tmp_path / "p"
     project.mkdir()
     (project / "AGENTS.md").write_text("# Shared\n\n## Memory bank\n\nProject memory rules.\n")
@@ -565,9 +565,10 @@ def test_given_rules_only_in_claude_when_adding_codex_then_custom_sections_move_
     run(project, sources, "--tools", "claude,codex", "--with", "coder-python")
     shared = (project / "AGENTS.md").read_text()
     local = (project / "CLAUDE.md").read_text()
-    assert "Custom routing." in shared and "### Briefs\n\nKeep these." in shared
-    assert "Custom Python rule." in shared and "Project memory rules." in shared
-    assert "Custom routing." not in local and "Custom Python rule." not in local
+    assert "Custom routing." not in shared and "### Briefs" not in shared
+    assert "Custom Python rule." not in shared and "Project memory rules." in shared
+    assert "Custom routing." in local and "Custom Python rule." in local
+    assert "### Briefs\n\nKeep these." in local
     assert "## Claude only\n\nKeep locally." in local and local.startswith("@AGENTS.md\n")
     assert "## Claude only" not in shared
     before = {p: p.read_bytes() for p in project.rglob("*") if p.is_file()}
@@ -680,3 +681,258 @@ def test_given_language_coder_then_yaml_description_is_quoted_and_converted_desc
         assert json.loads(description) == SPECIALISTS[name].description
     codex = tomllib.loads((project / ".codex/agents" / f"{name}.toml").read_text())
     assert codex["description"] == SPECIALISTS[name].description
+
+
+@pytest.mark.parametrize('tools,files,target', [
+    ('claude', [], 'AGENTS.md'),
+    ('claude', ['CLAUDE.md'], 'CLAUDE.md'),
+    ('claude', ['AGENTS.md'], 'AGENTS.md'),
+    ('claude', ['AGENTS.md', 'CLAUDE.md'], 'AGENTS.md'),
+    ('claude,cursor,codex', ['CLAUDE.md'], 'AGENTS.md'),
+    ('cursor,codex', ['AGENTS.md', 'CLAUDE.md'], 'AGENTS.md'),
+])
+def test_instruction_policy_never_moves_developer_rules(tmp_path, sources, tools, files, target):
+    project = tmp_path / 'project'
+    project.mkdir()
+    for name in files:
+        (project / name).write_text(f'# Developer {name}\n')
+    original = {name: (project / name).read_bytes() for name in files}
+    run(project, sources, '--tools', tools)
+    assert '## Agents and delegation' in (project / target).read_text()
+    for name, data in original.items():
+        if name == target:
+            assert (project / name).read_bytes().startswith(data)
+        else:
+            assert (project / name).read_bytes() == data
+    if 'CLAUDE.md' not in files:
+        assert not (project / 'CLAUDE.md').exists()
+    before = {p: p.read_bytes() for p in project.rglob('*') if p.is_file()}
+    run(project, sources, '--tools', tools)
+    assert {p: p.read_bytes() for p in project.rglob('*') if p.is_file()} == before
+
+
+@pytest.mark.parametrize('existing', [False, True])
+def test_explicit_claude_compat_import_is_idempotent(tmp_path, sources, existing):
+    project = tmp_path / 'project'
+    project.mkdir()
+    (project / 'AGENTS.md').write_text('# Shared\n')
+    if existing:
+        (project / 'CLAUDE.md').write_text('# Claude-specific\n')
+    run(project, sources, '--tools', 'claude,codex', '--claude-compat')
+    text = (project / 'CLAUDE.md').read_text()
+    assert text == '@AGENTS.md\n' + ('\n# Claude-specific\n' if existing else '')
+    run(project, sources, '--tools', 'claude,codex', '--claude-compat')
+    assert (project / 'CLAUDE.md').read_text() == text
+
+
+@pytest.mark.parametrize('personal', [False, True])
+def test_existing_settings_are_preserved_unless_explicitly_overridden(tmp_path, sources, personal):
+    project = tmp_path / 'project'
+    (project / '.claude').mkdir(parents=True)
+    path = project / '.claude' / ('settings.local.json' if personal else 'settings.json')
+    path.write_text(json.dumps({'model': 'opus', 'autoMemoryEnabled': True}))
+    args = ['--personal-settings'] if personal else []
+    run(project, sources, '--tools', 'claude', *args)
+    assert json.loads(path.read_text())['model'] == 'opus'
+    assert json.loads(path.read_text())['autoMemoryEnabled'] is True
+    run(project, sources, '--tools', 'claude', '--model', 'haiku', '--disable-auto-memory', *args)
+    config = json.loads(path.read_text())
+    assert config['model'] == 'haiku' and config['autoMemoryEnabled'] is False
+
+
+def test_personal_settings_inherit_shared_preferences(tmp_path, sources):
+    project = tmp_path / 'project'
+    (project / '.claude').mkdir(parents=True)
+    (project / '.claude/settings.json').write_text('{"model":"opus","autoMemoryEnabled":true}')
+    run(project, sources, '--personal-settings')
+    assert not (project / '.claude/settings.local.json').exists()
+    assert json.loads((project / '.claude/settings.json').read_text())['autoMemoryEnabled'] is True
+
+
+@pytest.mark.parametrize('tool,folder,suffix', [
+    ('claude', '.claude/agents', '.md'), ('cursor', '.cursor/agents', '.md'), ('codex', '.codex/agents', '.toml'),
+])
+def test_project_agent_is_reused_for_every_missing_tool(tmp_path, sources, tool, folder, suffix):
+    import tomllib
+    project = tmp_path / 'project'
+    (project / folder).mkdir(parents=True)
+    source = b'---\nname: architect\ndescription: "My project architect: custom rules"\ndisallowedTools: Edit, Write\n---\nProject-specific plan.\n'
+    path = project / folder / ('architect' + suffix)
+    path.write_bytes(convert_agent(tool, source))
+    original = path.read_bytes()
+    run(project, sources, '--tools', 'claude,cursor,codex')
+    assert path.read_bytes() == original
+    for dest in ['.claude/agents/architect.md', '.cursor/agents/architect.md']:
+        text = (project / dest).read_text()
+        assert 'My project architect: custom rules' in text and 'Project-specific plan.' in text
+    codex = tomllib.loads((project / '.codex/agents/architect.toml').read_text())
+    assert codex['description'] == 'My project architect: custom rules'
+    assert 'Project-specific plan.' in codex['developer_instructions']
+    assert codex['developer_instructions'].startswith('You are read-only')
+
+
+def test_multiline_yaml_and_tool_lists_survive_conversion():
+    import tomllib
+    source = b'---\nname: architect\ndescription: >-\n  Custom architect\n  for this project\ndisallowedTools:\n  - Edit\n  - Write\n---\nInstructions.\n'
+    data = tomllib.loads(convert_agent('codex', source).decode())
+    assert data['description'] == 'Custom architect for this project'
+    assert data['developer_instructions'].startswith('You are read-only')
+
+
+def test_different_existing_agents_are_preserved_and_warned(tmp_path, sources, capsys):
+    project = tmp_path / 'project'
+    for folder, description in [('.claude/agents', 'Claude custom'), ('.cursor/agents', 'Cursor custom')]:
+        (project / folder).mkdir(parents=True)
+        (project / folder / 'coder.md').write_text(f'---\nname: coder\ndescription: {description}\n---\nProject rules.\n')
+    run(project, sources, '--tools', 'claude,cursor,codex')
+    assert 'Cursor custom' in (project / '.cursor/agents/coder.md').read_text()
+    assert 'Claude custom' in (project / '.codex/agents/coder.toml').read_text()
+    assert 'cross-tool drift' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('source_folder', ['.claude/skills', '.cursor/skills', '.agents/skills', '.codex/skills'])
+def test_all_tool_skills_reuse_one_project_source(tmp_path, sources, source_folder):
+    project = tmp_path / 'project'
+    source = project / source_folder / 'sdd-feature'
+    (source / 'nested').mkdir(parents=True)
+    (source / 'SKILL.md').write_text('# Project SDD\n')
+    (source / 'nested/helper.txt').write_text('Project helper\n')
+    run(project, sources, '--tools', 'claude,cursor,codex')
+    for folder in ['.claude/skills', '.cursor/skills', '.agents/skills']:
+        assert (project / folder / 'sdd-feature/SKILL.md').read_text() == '# Project SDD\n'
+        assert (project / folder / 'sdd-feature/nested/helper.txt').read_text() == 'Project helper\n'
+
+
+@pytest.mark.parametrize('path,content', [
+    ('.mcp.json', '{broken'), ('.codex/config.toml', 'broken = ['),
+    ('.claude/settings.json', '{broken'), ('.cursor/mcp.json', '{"mcpServers": []}'),
+    ('.claude/settings.json', '{"hooks": []}'), ('.claude/settings.local.json', '{broken'),
+])
+def test_preflight_configuration_failure_changes_nothing(tmp_path, sources, path, content):
+    project = tmp_path / 'project'
+    config = project / path
+    config.parent.mkdir(parents=True)
+    config.write_text(content)
+    before = {p: p.read_bytes() for p in project.rglob('*') if p.is_file()}
+    with pytest.raises(SystemExit):
+        run(project, sources, '--tools', 'claude,cursor,codex')
+    assert {p: p.read_bytes() for p in project.rglob('*') if p.is_file()} == before
+
+
+def test_missing_last_skill_leaves_no_partial_install(tmp_path, sources):
+    project = tmp_path / 'project'
+    project.mkdir()
+    (sources / 'sdd-feature-skill/skills/sdd-feature/SKILL.md').unlink()
+    with pytest.raises(SystemExit, match='no SKILL.md'):
+        run(project, sources, '--tools', 'claude,cursor,codex')
+    assert list(project.iterdir()) == []
+
+
+def test_download_failure_leaves_no_partial_install(tmp_path, monkeypatch):
+    import subprocess
+    from agent_guild import installer
+    project = tmp_path / 'project'
+    project.mkdir()
+    def fail(*args):
+        raise subprocess.CalledProcessError(1, 'git fetch')
+    monkeypatch.setattr(installer, '_fetch', fail)
+    with pytest.raises(subprocess.CalledProcessError):
+        main([str(project)])
+    assert list(project.iterdir()) == []
+
+
+def test_default_downloads_are_pinned_and_recorded(tmp_path, sources, monkeypatch, capsys):
+    from agent_guild import installer
+    project = tmp_path / 'project'
+    project.mkdir()
+    requested = []
+    def fetch(url, into, revision):
+        requested.append((url, revision))
+        return sources / into.name
+    monkeypatch.setattr(installer, '_fetch', fetch)
+    main([str(project), '--dry-run'])
+    assert list(project.iterdir()) == []
+    assert {revision for _, revision in requested} == set(installer.SKILL_REVISIONS.values())
+    assert all(len(revision) == 40 for _, revision in requested)
+    assert installer.SKILL_REVISIONS['sdd'] in capsys.readouterr().out
+    main([str(project)])
+    manifest = json.loads((project / '.agents/skill-sources.json').read_text())
+    assert manifest['sdd']['revision'] == installer.SKILL_REVISIONS['sdd']
+    assert len(manifest['sdd']['sha256']) == 64
+
+
+def test_failed_memory_import_does_not_disable_memory_or_write_install(tmp_path, sources, monkeypatch):
+    from agent_guild import installer
+    project = tmp_path / 'project'
+    project.mkdir()
+    (installer.encoded_memory_dir(project) / 'memory').mkdir(parents=True)
+    class Failed:
+        returncode = 1
+    monkeypatch.setattr(installer.subprocess, 'run', lambda *a, **kw: Failed())
+    with pytest.raises(SystemExit, match='no installation files were written'):
+        run(project, sources, '--import-auto-memory')
+    assert list(project.iterdir()) == []
+
+
+def test_shared_workflow_does_not_enable_codex_on_next_install(tmp_path, sources, capsys):
+    project = tmp_path / 'project'
+    project.mkdir()
+    run(project, sources)
+    capsys.readouterr()
+    run(project, sources)
+    assert 'tools: claude (detected)' in capsys.readouterr().out
+    assert not (project / '.codex').exists()
+
+
+def test_invalid_generated_codex_config_leaves_no_install_files(tmp_path, sources):
+    project = tmp_path / 'project'
+    project.mkdir()
+    path = project / '.mcp.json'
+    path.write_text('{"mcpServers":{"jevmem":{"command":"custom","env":null}}}')
+    original = path.read_bytes()
+    with pytest.raises(SystemExit, match='cannot generate valid Codex MCP'):
+        run(project, sources, '--tools', 'claude,cursor,codex')
+    assert _tree(project) == ['.mcp.json']
+    assert path.read_bytes() == original
+
+
+def test_existing_workflow_is_reused_without_moving_the_original(tmp_path, sources):
+    project = tmp_path / 'project'
+    (project / '.claude').mkdir(parents=True)
+    (project / '.claude/development-workflow.md').write_text('# Custom workflow\n')
+    run(project, sources, '--tools', 'claude,cursor,codex')
+    assert (project / '.agents/development-workflow.md').read_text() == '# Custom workflow\n'
+    assert (project / '.claude/development-workflow.md').read_text() == '# Custom workflow\n'
+    assert 'Read `.agents/development-workflow.md`.' in (project / 'AGENTS.md').read_text()
+
+
+def test_language_coder_keeps_project_generic_instructions(tmp_path, sources):
+    from agent_guild.cli import DEFAULT_ASSETS
+    project = tmp_path / 'project'
+    (project / '.claude/agents').mkdir(parents=True)
+    generic = (DEFAULT_ASSETS / 'agents/coder.md').read_text().replace('## Rules', '## Rules\n- Preserve project-specific convention XYZ.')
+    (project / '.claude/agents/coder.md').write_text(generic)
+    run(project, sources, '--tools', 'claude,cursor,codex', '--with', 'coder-python')
+    for folder, suffix in [('.claude/agents', '.md'), ('.cursor/agents', '.md'), ('.codex/agents', '.toml')]:
+        assert 'Preserve project-specific convention XYZ.' in (project / folder / ('coder-python' + suffix)).read_text()
+
+
+def test_language_coder_from_cursor_source_has_explicit_navigation_tools(tmp_path, sources):
+    from agent_guild.cli import DEFAULT_ASSETS
+    import yaml
+    project = tmp_path / 'project'
+    (project / '.cursor/agents').mkdir(parents=True)
+    generic = convert_agent('cursor', (DEFAULT_ASSETS / 'agents/coder.md').read_bytes())
+    (project / '.cursor/agents/coder.md').write_bytes(generic)
+    run(project, sources, '--tools', 'claude,cursor,codex', '--with', 'coder-python')
+    fields = yaml.safe_load((project / '.claude/agents/coder-python.md').read_text().split('---\n', 2)[1])
+    assert 'mcp__codenav__symbol_info' in fields['tools']
+    assert 'disallowedTools' not in fields
+
+
+def test_indented_separator_in_yaml_description_is_not_a_frontmatter_boundary():
+    import tomllib
+    source = b'---\nname: coder\ndescription: |\n  Project\n  ---\n  instructions\n---\nBody.\n'
+    data = tomllib.loads(convert_agent('codex', source).decode())
+    assert data['description'] == 'Project\n---\ninstructions\n'
+    assert data['developer_instructions'] == 'Body.\n'

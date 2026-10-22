@@ -11,8 +11,13 @@ Agents are authored in Claude Code's format (`agents/*.md`); the other tools get
 from __future__ import annotations
 
 import json
+import re
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
+
+import yaml
 
 TOOLS = ("claude", "cursor", "codex")
 
@@ -38,7 +43,7 @@ def detect_tools(project: Path) -> list[str]:
     signs = {
         "claude": (".claude", "CLAUDE.md", ".mcp.json"),
         "cursor": (".cursor",),
-        "codex": (".codex", ".agents"),
+        "codex": (".codex", ".agents/skills"),
     }
     found = [t for t in TOOLS if any((project / s).exists() for s in signs[t])]
     return found or ["claude"]
@@ -57,25 +62,51 @@ def agent_filename(tool: str, agent: str) -> str:
 
 
 def workflow_path(tools: list[str] | frozenset[str]) -> str:
-    """One shared copy of the workflow doc, inside the first selected tool's folder."""
-    first = next(t for t in TOOLS if t in tools)
-    return f"{Path(VENDORS[first].agents_dir).parent.as_posix()}/development-workflow.md"
+    """All tools read this explicitly; its location does not select a coding tool."""
+    return ".agents/development-workflow.md"
 
 
-def _split(source: str) -> tuple[dict[str, str], str]:
-    _, frontmatter, body = source.replace("\r\n", "\n").split("---\n", 2)
-    fields = {}
-    for line in frontmatter.splitlines():
-        key, _, value = line.partition(":")
-        value = value.strip()
-        if value.startswith('"'):
-            value = json.loads(value)
-        fields[key.strip()] = value
+def _split(source: str) -> tuple[dict[str, Any], str]:
+    match = re.fullmatch(r"---[ \t]*\n(.*?)^---[ \t]*\n(.*)", source.replace("\r\n", "\n"), re.MULTILINE | re.DOTALL)
+    if match is None:
+        raise ValueError("agent needs YAML frontmatter delimited by --- lines")
+    frontmatter, body = match.groups()
+    fields = yaml.safe_load(frontmatter)
+    if not isinstance(fields, dict) or any(not isinstance(fields.get(key), str) or not fields[key].strip()
+                                          for key in ("name", "description")):
+        raise ValueError("agent frontmatter needs a nonempty name and description")
+    for key in ("tools", "disallowedTools"):
+        if isinstance(fields.get(key), list):
+            fields[key] = ", ".join(fields[key])
     return fields, body
 
 
 def _is_read_only(fields: dict[str, str]) -> bool:
     return "Edit" in {t.strip() for t in fields.get("disallowedTools", "").split(",")}
+
+
+def agent_source(tool: str, source: bytes) -> bytes:
+    """Normalize a project agent to the source format for missing tool copies."""
+    if tool == "claude":
+        return source
+    if tool == "cursor":
+        fields, body = _split(source.decode("utf-8"))
+        read_only = fields.get("readonly") in (True, "true")
+        effort = None
+    else:
+        fields = tomllib.loads(source.decode("utf-8"))
+        body = fields["developer_instructions"]
+        prefix = "You are read-only: never edit, create or delete files.\n\n"
+        read_only = body.startswith(prefix)
+        if read_only:
+            body = body.removeprefix(prefix)
+        effort = fields.get("model_reasoning_effort")
+    head = [f"name: {fields['name']}", f"description: {json.dumps(fields['description'], ensure_ascii=False)}"]
+    if effort:
+        head.append(f"effort: {effort}")
+    if read_only:
+        head.append("disallowedTools: Edit, Write, NotebookEdit")
+    return ("---\n" + "\n".join(head) + "\n---\n" + body.lstrip("\n")).encode("utf-8")
 
 
 def convert_agent(tool: str, source: bytes) -> bytes:

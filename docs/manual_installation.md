@@ -22,7 +22,7 @@ printf '\n@/path/to/agent-guild/development-workflow.md\n' >> ~/.claude/CLAUDE.m
 
 Orchestrator model: either globally, in `~/.claude/settings.json`, replace `"model": "opusplan"` with
 `"model": "sonnet"`; or only for a project, with `"model": "sonnet"` in its `.claude/settings.json` (or
-`.claude/settings.local.json` to keep it personal). The installer does the latter by default.
+`.claude/settings.local.json` to keep it personal). The installer defaults an absent project model to Sonnet and preserves existing project/local preferences.
 
 jevmem's own settings (API key or local model, `~/.jevmem/config.jsonc`) and its embedding model are per machine
 either way:

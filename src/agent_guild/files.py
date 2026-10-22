@@ -17,6 +17,29 @@ class Ctx:
     warnings: list[str] = field(default_factory=list)
     new_paths: list[tuple[Path, bool]] = field(default_factory=list)  # (topmost new path, is a directory)
     edited_existing: list[Path] = field(default_factory=list)
+    pending: dict[Path, bytes] = field(default_factory=dict)
+
+    def exists(self, path: Path) -> bool:
+        return path in self.pending or path.exists()
+
+    def read(self, path: Path) -> bytes:
+        return self.pending[path] if path in self.pending else path.read_bytes()
+
+    def write(self, path: Path, data: bytes):
+        if path.exists() and not path.is_file():
+            raise SystemExit(f"error: {path} must be a file")
+        for parent in path.parents:
+            if parent.exists() and not parent.is_dir():
+                raise SystemExit(f"error: {parent} must be a directory")
+        self.pending[path] = data
+
+    def apply(self):
+        """Apply only after every source and generated configuration has been checked."""
+        if self.dry_run:
+            return
+        for path, data in self.pending.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
 
     def log(self, status: str, path: Path | str, note: str = "") -> None:
         shown = path
@@ -43,8 +66,8 @@ class Ctx:
 
 def write_bytes(ctx: Ctx, dest: Path, data: bytes) -> str:
     """Create `dest`, or replace it only with --force. Never overwrites a file that differs by default."""
-    if dest.exists():
-        if dest.read_bytes() == data:
+    if ctx.exists(dest):
+        if ctx.read(dest) == data:
             ctx.log("unchanged", dest)
             return "unchanged"
         if not ctx.force:
@@ -55,9 +78,7 @@ def write_bytes(ctx: Ctx, dest: Path, data: bytes) -> str:
     else:
         status = "created"
         ctx.track_new(dest)
-    if not ctx.dry_run:
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(data)
+    ctx.write(dest, data)
     ctx.log(status if not ctx.dry_run else f"would {status.removesuffix('d')}", dest)
     return status
 
@@ -69,11 +90,11 @@ def copy_tree(ctx: Ctx, src: Path, dest: Path) -> None:
             write_bytes(ctx, dest / item.relative_to(src), item.read_bytes())
 
 
-def read_json(path: Path) -> tuple[dict[str, Any], str]:
+def read_json(path: Path, ctx: Ctx | None = None) -> tuple[dict[str, Any], str]:
     """Return (data, indent). Missing file -> ({}, two spaces). Matches the file's existing indent style."""
-    if not path.exists():
+    if not (ctx.exists(path) if ctx else path.exists()):
         return {}, "  "
-    text = path.read_text(encoding="utf-8")
+    text = ctx.read(path).decode("utf-8") if ctx else path.read_text(encoding="utf-8")
     if not text.strip():
         return {}, "  "
     try:
@@ -90,12 +111,10 @@ def write_json(ctx: Ctx, path: Path, data: dict[str, Any], indent: str, changes:
     if not changes:
         ctx.log("unchanged", path)
         return
-    verb = "edit" if path.exists() else "create"
+    verb = "edit" if ctx.exists(path) else "create"
     if verb == "edit":
         ctx.edited_existing.append(path)
     else:
         ctx.track_new(path)
-    if not ctx.dry_run:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, indent=indent, ensure_ascii=False) + "\n", encoding="utf-8")
+    ctx.write(path, (json.dumps(data, indent=indent, ensure_ascii=False) + "\n").encode("utf-8"))
     ctx.log(f"would {verb}" if ctx.dry_run else ("edited" if verb == "edit" else "created"), path, "+ " + ", ".join(changes))
