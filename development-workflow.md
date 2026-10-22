@@ -13,7 +13,7 @@ A project's own `CLAUDE.md` / `AGENTS.md` overrides anything here (paths, qualit
 | Rules the agent must always follow | `CLAUDE.md` / `AGENTS.md` | the user (you propose) |
 | Current state: focus, gate status, blockers, next step | `memory/` — `memory-bank` skill | you only |
 | Dated facts that stay true: decisions + why, bug causes, gotchas, preferences | jevmem (`memory_write`) — `jev-memory` skill | you only |
-| What a feature does | `specs/<feature>/SPEC.md`, `wireframes/` — `sdd-feature` skill | you, after user approval |
+| What a feature does | `specs/<feature>/SPEC.md`, `wireframes/`, `design/<feature>/DESIGN.md` — `sdd-feature` skill | you, after user approval |
 
 Never put current state in jevmem, or rules in either memory. A significant decision gets both a `memory/decisions.md`
 entry and a one-fact jevmem note. Use whichever of these the project has; if one is missing, skip it and don't create
@@ -53,12 +53,12 @@ approval") so a new session can resume.
 
 | Phase | Who | Notes |
 |---|---|---|
-| 0 Wireframe | you | Needs back-and-forth with the user. **Gate.** |
-| 1 Spec | `architect` proposes the four design decisions (success criteria, failure handling, performance budget, trust boundary) and the scenarios, for anything non-trivial; you discuss them with the user, then write `SPEC.md` and run `spec_check.py` | **Gate.** |
+| 0 Design | you; `architect` may draft the `DESIGN.md` content (flows, failure branches `F<n>`, data model, contracts) for a non-trivial system track | Pick the track: UI (`wireframes/`), system (`design/<feature>/DESIGN.md`) or both for fullstack, and say which. Needs back-and-forth with the user. Run `design_preview.py --check` on the design; unchecked diagrams are reported at the gate. **One gate** for both tracks. |
+| 1 Spec | `architect` proposes the five design decisions (success criteria, failure handling, performance budget, trust boundary, compatibility & rollout) and the scenarios (one per `F<n>` failure branch of the design), for anything non-trivial; you discuss them with the user, then write `SPEC.md` and run `spec_check.py` | **Gate.** |
 | 2 Architecture | `architect` designs domain types and interfaces, plus the Phase 3–4 plan (steps, which are parallel); a `coder` or you writes the interfaces | **Gate:** show the interfaces and a plan summary. |
 | 3 Tests | `coder`: one test per scenario; confirm they fail for the right reason | |
-| 4 Implementation | `coder` per plan step, in parallel when they touch different files; `utility` runs the full quality gate | Coders don't weaken or delete tests; if a test is wrong, they report it. Spec flaw → back to Phase 1. Update `memory/` at milestones. |
-| 5 Grade | `code-grader` with the spec path(s) and diff base; FAILs → `coder` with the findings verbatim; max 2 rounds; a structural finding → `architect` | Show the scorecard verbatim. |
+| 4 Implementation | `coder` per plan step, in parallel when they touch different files; `utility` runs the full quality gate | Code must match the approved wireframe and `DESIGN.md`; changing either needs re-approval. Coders don't weaken or delete tests; if a test is wrong, they report it. Spec flaw → back to Phase 1. Update `memory/` at milestones. |
+| 5 Grade | `code-grader` with the spec path(s) and diff base (it reads the wireframe and design the spec links); FAILs → `coder` with the findings verbatim; max 2 rounds; a structural finding → `architect` | Show the scorecard verbatim. |
 
 Once a phase's artifacts are on disk (wireframe, `SPEC.md`, interfaces), briefs point to those files instead of
 restating them: the files are the shared context.

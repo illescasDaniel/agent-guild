@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-22
+
+- Follow the updated sdd-feature skill: Phase 0 has a UI track (wireframe) and a system track (`DESIGN.md` with Mermaid
+  diagrams), a fifth design decision (compatibility & rollout), a scenario per `F<n>` failure branch, and the grader
+  checks design fidelity. Updated `sdd-rules.md`, `development-workflow.md`, `architect` and `code-grader`.
 - `coder-typescript` knows that webnav diagnostics can report missing `@types` errors the project's own `tsc` does not.
 
 ## [1.1.0] - 2026-10-22
