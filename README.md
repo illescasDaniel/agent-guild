@@ -48,7 +48,7 @@ Or let your coding agent do it. Paste this prompt into Claude Code, Cursor or Co
               └── all read specs/, memory/, jevmem recall; report memory candidates + friction ──┘
 ```
 
-> Not affiliated with or endorsed by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.
+> Not affiliated with or endorsed by Anthropic, Anysphere (Cursor) or OpenAI. "Claude", "Claude Code", "Cursor" and "Codex" are trademarks of their respective owners.
 
 ## Files
 
