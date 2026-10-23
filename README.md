@@ -123,7 +123,7 @@ installed it may list a skill twice.
 | `--claude-compat` | Add a `CLAUDE.md` import of `AGENTS.md` for older Claude Code or sessions that prefer Claude instruction files. Off by default |
 | `--disable-auto-memory` | Explicitly set `autoMemoryEnabled: false`; otherwise preserve an existing project/local preference |
 | `--import-cursor-skills` | Also copy the project's `.cursor/skills/*` into `.claude/skills/` (needs `claude` among the tools); skills that already exist are kept |
-| `--personal-settings` | Put `--model` and `autoMemoryEnabled` in the git-ignored `.claude/settings.local.json` |
+| `--personal-settings` | Put `--model` and `autoMemoryEnabled` in the git-ignored `.claude/settings.local.json`. For a Claude-only install the rules also go to `CLAUDE.local.md` (Claude reads it next to `CLAUDE.md`; it starts with `@AGENTS.md` when the project only has `AGENTS.md`), so no shared file is edited; git-ignore it, or use `--git-exclude`. Cursor and Codex have no personal project instruction file, so with them selected the rules stay in `AGENTS.md` |
 | `--import-auto-memory` | First import the project's existing auto-memory notes into jevmem |
 | `--keep-auto-memory` | Don't switch auto-memory off |
 | `--sources-dir DIR` | Use local clones named `memory-bank/`, `jev-mem/`, `sdd-feature-skill/` instead of the pinned upstream revisions; this is an explicit reproducibility override |

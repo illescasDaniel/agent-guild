@@ -989,3 +989,43 @@ def test_indented_separator_in_yaml_description_is_not_a_frontmatter_boundary():
     data = tomllib.loads(convert_agent('codex', source).decode())
     assert data['description'] == 'Project\n---\ninstructions\n'
     assert data['developer_instructions'] == 'Body.\n'
+
+
+def test_given_personal_settings_when_claude_only_then_rules_go_to_claude_local_md(tmp_path, sources):
+    # given
+    project = tmp_path / 'p'
+    project.mkdir()
+    (project / 'AGENTS.md').write_text('# Team rules\n')
+    # when
+    run(project, sources, '--tools', 'claude', '--personal-settings')
+    # then
+    local = (project / 'CLAUDE.local.md').read_text()
+    assert local.startswith('@AGENTS.md\n') and '## Memory bank' in local
+    assert (project / 'AGENTS.md').read_text() == '# Team rules\n'
+    assert not (project / 'CLAUDE.md').exists()
+
+
+def test_given_personal_settings_when_claude_md_exists_then_it_is_untouched_and_not_imported(tmp_path, sources):
+    project = tmp_path / 'p'
+    project.mkdir()
+    (project / 'CLAUDE.md').write_text('# Mine\n')
+    run(project, sources, '--tools', 'claude', '--personal-settings')
+    assert (project / 'CLAUDE.md').read_text() == '# Mine\n'
+    assert not (project / 'CLAUDE.local.md').read_text().startswith('@AGENTS.md')
+
+
+def test_given_personal_settings_when_rules_already_shared_then_they_are_not_duplicated(tmp_path, sources):
+    project = tmp_path / 'p'
+    project.mkdir()
+    run(project, sources, '--tools', 'claude')
+    run(project, sources, '--tools', 'claude', '--personal-settings')
+    assert not (project / 'CLAUDE.local.md').exists()
+
+
+def test_given_personal_settings_with_other_tools_then_rules_stay_in_agents_md(tmp_path, sources, capsys):
+    project = tmp_path / 'p'
+    project.mkdir()
+    run(project, sources, '--tools', 'claude,codex', '--personal-settings')
+    assert '## Memory bank' in (project / 'AGENTS.md').read_text()
+    assert not (project / 'CLAUDE.local.md').exists()
+    assert 'no personal' in capsys.readouterr().out + capsys.readouterr().err

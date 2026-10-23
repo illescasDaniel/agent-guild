@@ -234,22 +234,41 @@ def _take_rule_section(text: str, marker: str) -> tuple[str, str]:
 def install_rules(ctx: Ctx, opts: Options):
     """Append to the chosen instruction file. Developer-owned rules never move."""
     agents_md, claude_md = ctx.project / "AGENTS.md", ctx.project / "CLAUDE.md"
-    target = claude_md if claude_md.exists() and not agents_md.exists() and opts.tools == {"claude"} else agents_md
+    # Personal rules go to CLAUDE.local.md, which only Claude reads: Cursor and Codex have no personal project file.
+    personal = opts.personal_settings and opts.tools == {"claude"}
+    if opts.personal_settings and "claude" in opts.tools and not personal:
+        ctx.warn("--personal-settings: rules stay in AGENTS.md because Cursor and Codex have no personal "
+                 "project instruction file; only the Claude settings are personal.")
+    local_md = ctx.project / "CLAUDE.local.md"
+    if personal:
+        target = local_md
+    else:
+        target = claude_md if claude_md.exists() and not agents_md.exists() and opts.tools == {"claude"} else agents_md
     text = target.read_text(encoding="utf-8") if target.exists() else ""
     crlf = target.exists() and b"\r\n" in target.read_bytes()
-    other = claude_md if target == agents_md else agents_md
-    other_text = other.read_text(encoding="utf-8") if other.exists() else ""
+    others = [p for p in (claude_md, agents_md) if p != target]
+    other_texts = {p: p.read_text(encoding="utf-8") if p.exists() else "" for p in others}
     added = []
     for heading, body in _rule_sections(opts):
         own_section = _take_rule_section(text, heading)[0]
-        other_section = _take_rule_section(other_text, heading)[0]
-        if own_section and other_section and own_section != other_section:
-            ctx.warn(f"section '{heading}' is in both AGENTS.md and CLAUDE.md; review the copies for conflicting rules.")
+        other_sections = {p: _take_rule_section(t, heading)[0] for p, t in other_texts.items()}
+        if personal:
+            shared = next((p for p, sec in other_sections.items() if sec), None)
+            if shared and not own_section:
+                ctx.log("skipped", target, f"section '{heading}' is already in {shared.name}")
+                continue
+        else:
+            other = others[0]
+            other_section = other_sections[other]
+            if own_section and other_section and own_section != other_section:
+                ctx.warn(f"section '{heading}' is in both AGENTS.md and CLAUDE.md; review the copies for conflicting rules.")
+            if not own_section and other_section:
+                ctx.warn(f"section '{heading}' also exists in {other.name}; developer rules were not moved. Review the copies for conflicting rules.")
         if own_section:
             ctx.log("skipped", target, f"section '{heading}' is already in {target.name}")
             continue
-        if other_section:
-            ctx.warn(f"section '{heading}' also exists in {other.name}; developer rules were not moved. Review the copies for conflicting rules.")
+        if personal and not text.strip() and not claude_md.exists() and agents_md.exists():
+            text = "@AGENTS.md\n"  # CLAUDE.local.md hides AGENTS.md from Claude unless it imports it
         text = text.rstrip("\n") + ("\n\n" if text.strip() else "") + body + "\n"
         added.append(heading)
     if added:
@@ -257,6 +276,8 @@ def install_rules(ctx: Ctx, opts: Options):
         ctx.write(target, (text.replace("\n", "\r\n") if crlf else text).encode("utf-8"))
         (ctx.edited_existing.append(target) if target.exists() else ctx.track_new(target))
         ctx.log(f"would {verb}" if ctx.dry_run else ("edited" if target.exists() else "created"), target, "+ " + ", ".join(added))
+        if personal and not opts.git_exclude and shutil.which("git") and _git(ctx.project, "check-ignore", "-q", "CLAUDE.local.md").returncode == 1:
+            ctx.warn("CLAUDE.local.md is not git-ignored: add it to .gitignore (or use --git-exclude) so it stays personal.")
     if target == agents_md and "claude" in opts.tools:
         if opts.claude_compat:
             _import_agents_md(ctx, claude_md)

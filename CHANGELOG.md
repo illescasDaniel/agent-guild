@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [1.3.4] - 2026-10-23
+
+- `--personal-settings` on a Claude-only install now writes the rules to `CLAUDE.local.md` instead of editing `AGENTS.md`/`CLAUDE.md`,
+  importing `AGENTS.md` when that is the project's only instruction file. Warn when the file is not git-ignored.
+  With Cursor or Codex selected the rules stay in `AGENTS.md`, with a warning.
+
 ## [1.3.3] - 2026-10-23
 
 - Enable memory-bank friction logging by default: seed `memory/friction/` without replacing existing notes and

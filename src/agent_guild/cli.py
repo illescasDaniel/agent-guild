@@ -70,7 +70,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--claude-compat", action="store_true",
                    help="add a CLAUDE.md @AGENTS.md import for older Claude Code or sessions preferring CLAUDE.md")
     p.add_argument("--personal-settings", action="store_true",
-                   help="write --model and autoMemoryEnabled to .claude/settings.local.json instead of the committed settings.json")
+                   help="write --model and autoMemoryEnabled to .claude/settings.local.json instead of the committed settings.json; "
+                        "for a Claude-only install, also put the rules in CLAUDE.local.md instead of AGENTS.md/CLAUDE.md")
     memory = p.add_mutually_exclusive_group()
     memory.add_argument("--keep-auto-memory", action="store_true", help="don't set autoMemoryEnabled=false")
     memory.add_argument("--disable-auto-memory", action="store_true",
