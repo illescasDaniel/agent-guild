@@ -32,7 +32,11 @@ Or let your coding agent do it. Paste this prompt into Claude Code, Cursor or Co
 > contradicts the project's current rules or setup. Never overwrite or move my existing rules; resolve conflicts with
 > me, and ask before using `--force`. Then run the real install, review the resulting diff, warnings and next steps,
 > adapt the generated sections (quality-gate command, layering, conventions) to this project, and tell me what is
-> left for me to do.
+> left for me to do. Also ask me whether the changes should be added to git and committed, or kept as my personal
+> settings; if personal, run the install with `--personal-settings`, then walk me through every file that could still
+> be changed or was changed (e.g. `AGENTS.md`, `.claude/`, `CLAUDE.local.md`, `.mcp.json`) so I can choose what to do
+> with each: ignore it (`.gitignore`), exclude it locally (`.git/info/exclude`, or `--git-exclude`), hide just those
+> edits with `git update-index --skip-worktree`/`--assume-unchanged`, or commit it anyway.
 
 ```
                          user
