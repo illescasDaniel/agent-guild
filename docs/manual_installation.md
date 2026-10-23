@@ -87,7 +87,8 @@ change, put that key in `.claude/settings.local.json` instead.
 **Rules**, in the project's `AGENTS.md` / `CLAUDE.md`:
 
 - **Memory bank**: the snippet from the [memory-bank README](https://github.com/illescasDaniel/memory-bank#use-it),
-  then ask the agent to "set up the memory bank".
+  then ask the agent to "set up the memory bank", including `friction/`. Add
+  [the friction rules](../templates/friction-rules.md) to enable incident logging by default.
 - **SDD, if wanted**: the Phase Gate Protocol snippet from the
   [sdd-feature README](https://github.com/illescasDaniel/sdd-feature-skill#add-this-to-your-agentsmd--claudemd),
   adjusted to the project's paths. Leave it out to keep SDD manual: the skill still works when you ask for it.

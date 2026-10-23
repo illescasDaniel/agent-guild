@@ -16,6 +16,9 @@ def sources(tmp_path):
     for repo, sub in REPOS.items():
         (root / repo / sub).mkdir(parents=True)
         (root / repo / sub / "SKILL.md").write_text(f"# {repo}\n")
+    friction = root / "memory-bank/skills/memory-bank/templates/friction"
+    friction.mkdir(parents=True)
+    (friction / "README.md").write_text("# Friction log\n\nOne dated file per incident.\n")
     return root
 
 
@@ -49,6 +52,47 @@ def test_given_empty_project_when_installed_then_everything_is_copied(tmp_path, 
     assert settings["model"] == "sonnet" and settings["autoMemoryEnabled"] is False
     assert set(settings["hooks"]) == {"SessionStart", "UserPromptSubmit"}
     assert "jevmem" in json.loads((project / ".mcp.json").read_text())["mcpServers"]
+
+
+@pytest.mark.parametrize("tool", ["claude", "cursor", "codex", "claude,cursor,codex"])
+def test_friction_is_enabled_for_every_tool_without_replacing_existing_memory_rules(tmp_path, sources, tool):
+    project = tmp_path / "p"
+    project.mkdir()
+    (project / "AGENTS.md").write_text("## Memory bank\n\nCustom memory rules.\n")
+
+    run(project, sources, "--tools", tool)
+
+    assert (project / "memory/friction/README.md").read_bytes() == (
+        sources / "memory-bank/skills/memory-bank/templates/friction/README.md").read_bytes()
+    rules = (project / "AGENTS.md").read_text()
+    assert "Custom memory rules." in rules
+    assert "## Friction log" in rules and "secondary maintenance backlog" in rules
+    assert "even though `memory/` already exists" in rules
+
+
+@pytest.mark.parametrize("force", [False, True])
+def test_friction_setup_preserves_existing_logs_and_memory(tmp_path, sources, force):
+    project = tmp_path / "p"
+    friction = project / "memory/friction"
+    friction.mkdir(parents=True)
+    (friction / "README.md").write_text("Custom friction policy.\n")
+    (friction / "2026-10-23-tool-error.md").write_text("An existing incident.\n")
+    (project / "memory/activeContext.md").write_text("Current project focus.\n")
+    before = {p: p.read_bytes() for p in (project / "memory").rglob("*") if p.is_file()}
+
+    run(project, sources, *(["--force"] if force else []))
+
+    assert {p: p.read_bytes() for p in (project / "memory").rglob("*") if p.is_file()} == before
+
+
+def test_without_memory_bank_skips_friction_setup(tmp_path, sources):
+    project = tmp_path / "p"
+    project.mkdir()
+
+    run(project, sources, "--without", "memory-bank")
+
+    assert not (project / "memory").exists()
+    assert "## Friction log" not in (project / "AGENTS.md").read_text()
 
 
 def test_given_agents_md_only_when_installed_then_it_holds_the_sections_and_claude_md_imports_it(tmp_path, sources):

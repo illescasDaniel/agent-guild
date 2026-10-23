@@ -88,7 +88,10 @@ Delegation has a cost: a one-command task with short output, or an edit you can 
   or escalate to `architect`.
 - `code-grader`: never argue a FAIL away; fix it or show it to the user.
 - Every report: handle the **Memory candidates** (write to jevmem / `decisions.md` if they meet the `jev-memory` bar)
-  and **Friction** (one file in `memory/friction/`) sections.
+  and **Friction** sections. When memory-bank is enabled, record each tool, doc or workflow problem in a small dated
+  file in `memory/friction/`, following its README. Record problems you hit yourself too, at the moment they happen,
+  then keep working. Skip typos and one-off environment issues; redact secrets and personal paths. Respect project
+  opt-outs. Subagents report friction; only the orchestrator writes the log.
 - Summarize for the user; don't relay reports wholesale.
 
 ## Hand-off and commits

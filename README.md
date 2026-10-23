@@ -87,7 +87,11 @@ It does, in the project, for each coding tool it finds (see **Tools** below):
   `.agents/development-workflow.md`, explicitly read by Claude Code, Cursor and Codex;
 - copies the `memory-bank`, `jev-memory` and `sdd-feature` skills into that tool's skills folder (`.claude/skills/`,
   `.cursor/skills/`, `.agents/skills/` for Codex), cloned from GitHub, or from local clones with `--sources-dir DIR`;
-- adds three removable sections: *Agents and delegation*, *Memory bank* and *Phase Gate Protocol*. If `AGENTS.md`
+- seeds `memory/friction/` from memory-bank's template and enables dated tool, doc and workflow incident notes by
+  default. This secondary maintenance backlog is separate from the project memory used to resume work and is not
+  read at session start. Existing log files are preserved, even with `--force`. `--without memory-bank` skips this setup too.
+  The agent initializes missing core memory files from the skill templates when needed;
+- adds four removable sections: *Agents and delegation*, *Memory bank*, *Friction log* and *Phase Gate Protocol*. If `AGENTS.md`
   exists, that is the target. If only `CLAUDE.md` exists and only Claude Code is selected, it is the target instead.
   Otherwise, creates `AGENTS.md`. Existing sections in the target are preserved; conflicts with sections in the
   other instruction file produce warnings. **No developer rules are moved, deleted or migrated between files.**

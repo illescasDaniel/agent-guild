@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-10-23
+
+- Enable memory-bank friction logging by default: seed `memory/friction/` without replacing existing notes and
+  install a separate Friction log rules section, including for projects with existing Memory bank rules.
+- Clarify that friction is a secondary maintenance backlog, separate from session context. Pin the updated
+  memory-bank skill, which includes friction in every setup and creates missing core files in partial memory banks.
+
 ## [1.3.2] - 2026-10-22
 
 - Cursor and Codex agent copies now refer only to `AGENTS.md` instead of "`CLAUDE.md` / `AGENTS.md`"; Claude Code copies are unchanged.

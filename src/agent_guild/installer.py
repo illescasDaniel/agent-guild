@@ -35,7 +35,7 @@ SKILL_SOURCES = {
 REPO_DIRS = {"memory-bank": "memory-bank", "jevmem": "jev-mem", "sdd": "sdd-feature-skill"}
 COMPONENTS = ("memory-bank", "jevmem", "sdd")
 SKILL_REVISIONS = {
-    "memory-bank": "e6c3043d0b445461541f0656a4ab28a9a730b5a1",
+    "memory-bank": "fc573f58de1da0a29fcd0bd5e2505f9b80eeab6f",
     "jevmem": "380d92227c114217a617ac95ab62d812fef4bc4d",
     "sdd": "5443fe57ff5f0fef25d8a76f75dae64953bb9e7b",
 }
@@ -44,6 +44,7 @@ SKILL_REVISIONS = {
 RULE_SECTIONS = (
     ("Agents and delegation", "agents-rules.md", None),
     ("Memory bank", "memory-bank-rules.md", "memory-bank"),
+    ("Friction log", "friction-rules.md", "memory-bank"),
     ("Phase Gate Protocol", "sdd-rules.md", "sdd"),
 )
 
@@ -189,6 +190,14 @@ def install_skills(ctx: Ctx, opts: Options):
                                      "existing files kept. Review cross-tool drift.")
                     copy_tree(ctx, local, dest)
                 copy_tree(ctx, src, dest)
+            if component == "memory-bank":
+                # Seed the shared log once, independently of the selected coding tools.
+                # Project notes are never replaced, including with --force.
+                for item in sorted((src / "templates/friction").rglob("*")):
+                    if item.is_file():
+                        dest = ctx.project / "memory/friction" / item.relative_to(src / "templates/friction")
+                        if not ctx.exists(dest):
+                            write_bytes(ctx, dest, item.read_bytes())
     path = ctx.project / ".agents/skill-sources.json"
     existing, _ = read_json(path, ctx)
     provenance = {**existing, **provenance}
